@@ -1,4 +1,4 @@
-module github.com/i1snow/terraform-provider-scylladb
+module github.com/retailnext/terraform-provider-scylladb
 
 go 1.25.5
 

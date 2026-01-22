@@ -9,7 +9,7 @@ import (
 	"log"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
-	"github.com/i1snow/terraform-provider-scylladb/internal/provider"
+	"github.com/retailnext/terraform-provider-scylladb/internal/provider"
 )
 
 var (

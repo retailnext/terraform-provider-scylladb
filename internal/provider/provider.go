@@ -17,8 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/i1snow/terraform-provider-scylladb/internal/consts"
-	"github.com/i1snow/terraform-provider-scylladb/scylladb"
+	"github.com/retailnext/terraform-provider-scylladb/scylladb"
 )
 
 // Ensure ScylladbProvider satisfies various provider interfaces.
@@ -66,7 +65,7 @@ func (p *scylladbProvider) Schema(ctx context.Context, req provider.SchemaReques
 			},
 		},
 		Blocks: map[string]schema.Block{
-			consts.FieldAuthLoginUserpass: schema.SingleNestedBlock{
+			"auth_login_userpass": schema.SingleNestedBlock{
 				Description: "Login to ScyllaDB using the userpass method",
 				Attributes: map[string]schema.Attribute{
 					"username": schema.StringAttribute{

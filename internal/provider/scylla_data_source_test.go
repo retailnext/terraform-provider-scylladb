@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"github.com/i1snow/terraform-provider-scylladb/internal/testutil"
+	"github.com/retailnext/terraform-provider-scylladb/internal/testutil"
 )
 
 func TestAccRoleDataSource(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/i1snow/terraform-provider-scylladb/internal/testutil"
+	"github.com/retailnext/terraform-provider-scylladb/internal/testutil"
 	"github.com/stretchr/testify/assert"
 )
 

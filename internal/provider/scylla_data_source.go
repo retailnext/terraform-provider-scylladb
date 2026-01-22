@@ -10,7 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/i1snow/terraform-provider-scylladb/scylladb"
+	"github.com/retailnext/terraform-provider-scylladb/scylladb"
 )
 
 // Ensure the implementation satisfies the expected interfaces.

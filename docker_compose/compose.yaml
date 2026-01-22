@@ -1,0 +1,10 @@
+# Copyright (c) HashiCorp, Inc.
+# SPDX-License-Identifier: MPL-2.0
+
+services:
+  scylla:
+    container_name: scylla-node
+    image: scylladb/scylla:2025.4.1
+    command: --developer-mode 1 --smp 1 --overprovisioned 1
+    ports:
+      - "9042:9042"

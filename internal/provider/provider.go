@@ -177,6 +177,7 @@ func (p *scylladbProvider) Configure(ctx context.Context, req provider.Configure
 func (p *scylladbProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewRoleResource,
+		NewGrantResource,
 	}
 }
 

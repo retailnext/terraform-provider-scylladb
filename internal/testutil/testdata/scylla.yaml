@@ -2,3 +2,4 @@
 # SPDX-License-Identifier: MPL-2.0
 
 authenticator: PasswordAuthenticator
+authorizer: CassandraAuthorizer

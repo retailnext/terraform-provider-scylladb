@@ -1,9 +1,10 @@
-# NOTE: This file is for HashiCorp specific licensing automation and can be deleted after creating a new repo with this template.
+# Copyright RetailNext, Inc. 2026
+
 schema_version = 1
 
 project {
-  license        = "MPL-2.0"
-  copyright_year = 2021
+  copyright_year = 2026
+  copyright_holder = "RetailNext, Inc."
 
   header_ignore = [
     # internal catalog metadata (prose)
@@ -20,5 +21,8 @@ project {
 
     # GoReleaser tooling configuration
     ".goreleaser.yml",
+
+    # testdata
+    "**/testdata/**"
   ]
 }

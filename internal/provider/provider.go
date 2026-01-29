@@ -1,5 +1,4 @@
-// Copyright IBM Corp. 2021, 2025
-// SPDX-License-Identifier: MPL-2.0
+// Copyright RetailNext, Inc. 2026
 
 package provider
 
@@ -36,14 +35,22 @@ type scylladbProvider struct {
 
 // scylladbProviderModel describes the provider data model.
 type scylladbProviderModel struct {
-	Host               types.String            `tfsdk:"host"`
-	SystemAuthKeyspace types.String            `tfsdk:"system_auth_keyspace"`
-	AuthLoginUserPass  *authLoginUserPassModel `tfsdk:"auth_login_userpass"`
+	Host                 types.String            `tfsdk:"host"`
+	SystemAuthKeyspace   types.String            `tfsdk:"system_auth_keyspace"`
+	SkipHostVerification types.Bool              `tfsdk:"skip_host_verification"`
+	CAcertFile           types.String            `tfsdk:"ca_cert_file"`
+	AuthLoginUserPass    *authLoginUserPassModel `tfsdk:"auth_login_userpass"`
+	AuthTLS              *authTLSModel           `tfsdk:"auth_tls"`
 }
 
 type authLoginUserPassModel struct {
 	Username types.String `tfsdk:"username"`
 	Password types.String `tfsdk:"password"`
+}
+
+type authTLSModel struct {
+	CertFile types.String `tfsdk:"cert_file"`
+	KeyFile  types.String `tfsdk:"key_file"`
 }
 
 func (p *scylladbProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -63,6 +70,14 @@ func (p *scylladbProvider) Schema(ctx context.Context, req provider.SchemaReques
 				MarkdownDescription: "The keyspace where ScyllaDB stores authentication and authorization information. Default is `system_auth`.",
 				Optional:            true,
 			},
+			"ca_cert_file": schema.StringAttribute{
+				MarkdownDescription: "Path to the CA certificate file for TLS connections.",
+				Optional:            true,
+			},
+			"skip_host_verification": schema.BoolAttribute{
+				MarkdownDescription: "Skip TLS host verification. Default is `false`.",
+				Optional:            true,
+			},
 		},
 		Blocks: map[string]schema.Block{
 			"auth_login_userpass": schema.SingleNestedBlock{
@@ -70,12 +85,25 @@ func (p *scylladbProvider) Schema(ctx context.Context, req provider.SchemaReques
 				Attributes: map[string]schema.Attribute{
 					"username": schema.StringAttribute{
 						Description: "Login with username",
-						Required:    true,
+						Optional:    true,
 					},
 					"password": schema.StringAttribute{
 						Description: "Login with password",
-						Required:    true,
+						Optional:    true,
 						Sensitive:   true,
+					},
+				},
+			},
+			"auth_tls": schema.SingleNestedBlock{
+				Description: "Login to ScyllaDB using TLS",
+				Attributes: map[string]schema.Attribute{
+					"cert_file": schema.StringAttribute{
+						Description: "Path to the client certificate file for TLS connections",
+						Optional:    true,
+					},
+					"key_file": schema.StringAttribute{
+						Description: "Path to the client key file for TLS connections",
+						Optional:    true,
 					},
 				},
 			},
@@ -89,25 +117,6 @@ func (p *scylladbProvider) Configure(ctx context.Context, req provider.Configure
 	// Retrieve provider data from configuration.
 	var data scylladbProviderModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	tflog.Info(ctx, "Provider configuration", map[string]interface{}{
-		"host": data.Host.ValueString(),
-		//"username": data.Username.ValueString(),
-		// Do not log sensitive values such as passwords.
-	})
-
-	if data.Host.IsUnknown() {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("host"),
-			"Unknown ScyllaDB API Host",
-			"The provider cannot create the ScyllaDB client as there is an unknown configuration value for. "+
-				"Either target apply the source of the value first, set the value statically in the configuration, or use the SCYLLADB_HOST environment variable.",
-		)
-	}
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -151,11 +160,113 @@ func (p *scylladbProvider) Configure(ctx context.Context, req provider.Configure
 		client.SetSystemAuthKeyspace("system_auth")
 	}
 
+	// Set Username/Password authentication if configured
 	if data.AuthLoginUserPass != nil {
-		client.SetUserPasswordAuth(data.AuthLoginUserPass.Username.ValueString(), data.AuthLoginUserPass.Password.ValueString())
+		tflog.Debug(ctx, "Configuring Username/Password authentication for ScyllaDB client")
+		password := os.Getenv("SCYLLADB_PASSWORD")
+		if !data.AuthLoginUserPass.Password.IsNull() {
+			password = data.AuthLoginUserPass.Password.ValueString()
+		}
+
+		if password == "" {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("auth_login_userpass").AtName("password"),
+				"Missing ScyllaDB Password",
+				"The provider cannot create the ScyllaDB client as there is a missing or empty value for the ScyllaDB password. "+
+					"Set the password value in the configuration or use the SCYLLADB_PASSWORD environment variable. "+
+					"If either is already set, ensure the value is not empty.",
+			)
+		}
+
+		client.SetUserPasswordAuth(data.AuthLoginUserPass.Username.ValueString(), password)
 	}
 
-	err := client.CreateSession()
+	// Set TLS authentication if configured
+
+	// Default
+	caCert := []byte(os.Getenv("SCYLLADB_CA_CERT"))
+	clientCert := []byte(os.Getenv("SCYLLADB_CLIENT_CERT"))
+	clientKey := []byte(os.Getenv("SCYLLADB_CLIENT_KEY"))
+	skipHostVerification := false
+	var err error
+
+	tflog.Debug(ctx, "TLS env vars", map[string]any{
+		"ca_cert_len":     len(os.Getenv("SCYLLADB_CA_CERT")),
+		"client_cert_len": len(os.Getenv("SCYLLADB_CLIENT_CERT")),
+		"client_key_len":  len(os.Getenv("SCYLLADB_CLIENT_KEY")),
+	})
+
+	// Read the CA cert file if provided
+	if !data.CAcertFile.IsNull() {
+		if !data.CAcertFile.IsNull() {
+			caCertFile := data.CAcertFile.ValueString()
+			caCert, err = os.ReadFile(caCertFile)
+			if err != nil {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("ca_cert_file"),
+					"Unable to Read CA Certificate File",
+					"An unexpected error was encountered trying to read the CA certificate file. "+
+						"Please verify the file path is correct and try again.\n\n"+
+						err.Error(),
+				)
+			}
+		}
+	}
+
+	// Read the skip host verification flag
+	if !data.SkipHostVerification.IsNull() {
+		skipHostVerification = data.SkipHostVerification.ValueBool()
+	}
+
+	// Read the client cert and key files if provided
+	if data.AuthTLS != nil {
+		if !data.AuthTLS.CertFile.IsNull() {
+			certFile := data.AuthTLS.CertFile.ValueString()
+			clientCert, err = os.ReadFile(certFile)
+			if err != nil {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("auth_tls").AtName("cert_file"),
+					"Unable to Read Client Certificate File",
+					"An unexpected error was encountered trying to read the client certificate file. "+
+						"Please verify the file path is correct and try again.\n\n"+
+						err.Error(),
+				)
+			}
+		}
+
+		if !data.AuthTLS.KeyFile.IsNull() {
+			keyFile := data.AuthTLS.KeyFile.ValueString()
+			clientKey, err = os.ReadFile(keyFile)
+			if err != nil {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("auth_tls").AtName("key_file"),
+					"Unable to Read Client Key File",
+					"An unexpected error was encountered trying to read the client key file. "+
+						"Please verify the file path is correct and try again.\n\n"+
+						err.Error(),
+				)
+			}
+		}
+	}
+
+	if len(caCert) > 0 || len(clientCert) > 0 || len(clientKey) > 0 {
+		tflog.Debug(ctx, "Configuring TLS for ScyllaDB client")
+		err = client.SetTLS(caCert, clientCert, clientKey, !skipHostVerification)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Unable to Configure TLS for ScyllaDB Client",
+				"An unexpected error was encountered trying to configure TLS for the ScyllaDB client. "+
+					"Please verify the certificate and key files are correct and try again.\n\n"+
+					err.Error(),
+			)
+		}
+	}
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	err = client.CreateSession()
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Create ScyllaDB Client",

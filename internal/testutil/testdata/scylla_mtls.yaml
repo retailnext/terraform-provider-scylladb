@@ -1,0 +1,11 @@
+authenticator: com.scylladb.auth.CertificateAuthenticator
+auth_certificate_role_queries:
+  - source: SUBJECT
+    query: CN\s*=\s*([^,\s]+)
+
+client_encryption_options:
+  enabled: true
+  certificate: /etc/scylla/server.crt
+  keyfile: /etc/scylla/server.key
+  truststore: /etc/scylla/ca.crt
+  require_client_auth: true

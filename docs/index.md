@@ -28,13 +28,25 @@ provider "scylladb" {
 ### Optional
 
 - `auth_login_userpass` (Block, Optional) Login to ScyllaDB using the userpass method (see [below for nested schema](#nestedblock--auth_login_userpass))
+- `auth_tls` (Block, Optional) Login to ScyllaDB using TLS (see [below for nested schema](#nestedblock--auth_tls))
+- `ca_cert_file` (String) Path to the CA certificate file for TLS connections.
 - `host` (String) Hostname or IP address of the ScyllaDB instance with a port if necessary. e.g. localhost:9042
+- `skip_host_verification` (Boolean) Skip TLS host verification. Default is `false`.
 - `system_auth_keyspace` (String) The keyspace where ScyllaDB stores authentication and authorization information. Default is `system_auth`.
 
 <a id="nestedblock--auth_login_userpass"></a>
 ### Nested Schema for `auth_login_userpass`
 
-Required:
+Optional:
 
 - `password` (String, Sensitive) Login with password
 - `username` (String) Login with username
+
+
+<a id="nestedblock--auth_tls"></a>
+### Nested Schema for `auth_tls`
+
+Optional:
+
+- `cert_file` (String) Path to the client certificate file for TLS connections
+- `key_file` (String) Path to the client key file for TLS connections

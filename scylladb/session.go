@@ -18,6 +18,7 @@ import (
 	"time"
 
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
+	"golang.org/x/net/proxy"
 )
 
 type Cluster struct {
@@ -51,7 +52,7 @@ func (p *ProxyDialer) DialContext(ctx context.Context, network, addr string) (ne
 	if err != nil {
 		return nil, err
 	}
-	// 2. Request a tunnel to the Cassandra node. addr ~ 1.2.3.4:9042
+	// 2. Request a tunnel to the scylla node. addr ~ 1.2.3.4:9042
 	req := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", addr, addr)
 	if _, err := proxyConn.Write([]byte(req)); err != nil {
 		proxyConn.Close()
@@ -80,15 +81,41 @@ func (p *ProxyDialer) DialContext(ctx context.Context, network, addr string) (ne
 }
 
 func NewClusterConfig(hosts []string) Cluster {
-	cluster := gocql.NewCluster(hosts...)
-	// Check proxy
+	// Check proxy FIRST and set up DNS resolver BEFORE creating cluster
 	proxyStr := cmp.Or(os.Getenv("HTTPS_PROXY"), os.Getenv("HTTP_PROXY"))
+	var clusterDialer gocql.Dialer
+
 	if proxyStr != "" {
-		if !strings.HasPrefix(proxyStr, "http://") && !strings.HasPrefix(proxyStr, "https://") {
+		if !strings.HasPrefix(proxyStr, "http://") && !strings.HasPrefix(proxyStr, "https://") && !strings.HasPrefix(proxyStr, "socks5://") {
 			proxyStr = "http://" + proxyStr
 		}
 		proxyURL, _ := url.Parse(proxyStr)
-		cluster.Dialer = &ProxyDialer{ProxyURL: proxyURL}
+		if proxyURL.Scheme == "socks5" {
+			// SOCKS5 supports remote DNS resolution
+			dialer, err := proxy.FromURL(proxyURL, proxy.Direct)
+			if err == nil {
+				contextDialer := dialer.(proxy.ContextDialer)
+				clusterDialer = contextDialer
+				// Override default DNS resolver BEFORE creating cluster
+				net.DefaultResolver = &net.Resolver{
+					PreferGo: true,
+					Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+						// Force TCP because SOCKS5 doesn't support UDP
+						// DNS servers support both UDP and TCP on port 53
+						conn, err := contextDialer.DialContext(ctx, "tcp", "127.0.0.53:53")
+						return conn, err
+					},
+				}
+			}
+		} else {
+			clusterDialer = &ProxyDialer{ProxyURL: proxyURL}
+		}
+	}
+
+	// Now create cluster AFTER resolver is set
+	cluster := gocql.NewCluster(hosts...)
+	if clusterDialer != nil {
+		cluster.Dialer = clusterDialer
 	}
 	cluster.DisableInitialHostLookup = true
 	cluster.NumConns = 1

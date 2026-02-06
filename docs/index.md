@@ -30,6 +30,7 @@ provider "scylladb" {
 - `auth_login_userpass` (Block, Optional) Login to ScyllaDB using the userpass method (see [below for nested schema](#nestedblock--auth_login_userpass))
 - `auth_tls` (Block, Optional) Login to ScyllaDB using TLS (see [below for nested schema](#nestedblock--auth_tls))
 - `ca_cert_file` (String) Path to the CA certificate file for TLS connections.
+- `dns_address` (String) DNS server IP address for resolving hostnames through the proxy. This is relevant when you use a proxy and the hostname must be resolved through the network of the proxy
 - `host` (String) Hostname or IP address of the ScyllaDB instance with a port if necessary. e.g. localhost:9042
 - `skip_host_verification` (Boolean) Skip TLS host verification. Default is `false`.
 - `system_auth_keyspace` (String) The keyspace where ScyllaDB stores authentication and authorization information. Default is `system_auth`.

@@ -80,39 +80,67 @@ func (p *ProxyDialer) DialContext(ctx context.Context, network, addr string) (ne
 	return proxyConn, nil
 }
 
-func NewClusterConfig(hosts []string) Cluster {
-	// Check proxy FIRST and set up DNS resolver BEFORE creating cluster
-	proxyStr := cmp.Or(os.Getenv("HTTPS_PROXY"), os.Getenv("HTTP_PROXY"))
-	var clusterDialer gocql.Dialer
+func getProxyDialer(proxyStr, nameserverIP string) (proxyDialer proxy.ContextDialer, err error) {
+	if !strings.HasPrefix(proxyStr, "http://") && !strings.HasPrefix(proxyStr, "https://") && !strings.HasPrefix(proxyStr, "socks5://") {
+		proxyStr = "http://" + proxyStr
+	}
+	proxyURL, err := url.Parse(proxyStr)
+	if err != nil {
+		return nil, err
+	}
 
-	if proxyStr != "" {
-		if !strings.HasPrefix(proxyStr, "http://") && !strings.HasPrefix(proxyStr, "https://") && !strings.HasPrefix(proxyStr, "socks5://") {
-			proxyStr = "http://" + proxyStr
+	// HTTP CONNECT proxy
+	if proxyURL.Scheme == "http" || proxyURL.Scheme == "https" {
+		proxyDialer = &ProxyDialer{ProxyURL: proxyURL}
+	} else {
+		// SOCKS5
+		dialer, err := proxy.FromURL(proxyURL, proxy.Direct)
+		if err != nil {
+			return nil, err
 		}
-		proxyURL, _ := url.Parse(proxyStr)
-		if proxyURL.Scheme == "socks5" {
-			// SOCKS5 supports remote DNS resolution
-			dialer, err := proxy.FromURL(proxyURL, proxy.Direct)
-			if err == nil {
-				contextDialer := dialer.(proxy.ContextDialer)
-				clusterDialer = contextDialer
-				// Override default DNS resolver BEFORE creating cluster
-				net.DefaultResolver = &net.Resolver{
-					PreferGo: true,
-					Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-						// Force TCP because SOCKS5 doesn't support UDP
-						// DNS servers support both UDP and TCP on port 53
-						conn, err := contextDialer.DialContext(ctx, "tcp", "127.0.0.53:53")
-						return conn, err
-					},
-				}
-			}
-		} else {
-			clusterDialer = &ProxyDialer{ProxyURL: proxyURL}
+		var ok bool
+		proxyDialer, ok = dialer.(proxy.ContextDialer)
+		if !ok {
+			return proxyDialer, fmt.Errorf("fails to cast dialer to contextDialer")
 		}
 	}
 
-	// Now create cluster AFTER resolver is set
+	if nameserverIP == "" {
+		return proxyDialer, nil
+	}
+
+	// Override default DNS resolver to route through proxy
+	net.DefaultResolver = &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			// Force TCP because proxies don't support UDP
+			dnsAddr := fmt.Sprintf("%s:53", nameserverIP)
+			fmt.Printf("DNS resolver: routing %s query to %s through proxy\n", network, dnsAddr)
+			conn, err := proxyDialer.DialContext(ctx, "tcp", dnsAddr)
+			if err != nil {
+				fmt.Printf("DNS resolver error: %v\n", err)
+			}
+			return conn, err
+		},
+	}
+
+	return proxyDialer, err
+
+}
+
+func NewClusterConfig(hosts []string) Cluster {
+	// Check proxy first and set up DNS resolver before creating cluster
+	proxyStr := cmp.Or(os.Getenv("HTTPS_PROXY"), os.Getenv("HTTP_PROXY"))
+	var clusterDialer gocql.Dialer
+	var err error
+
+	if proxyStr != "" {
+		clusterDialer, err = getProxyDialer(proxyStr, "127.0.0.53")
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	cluster := gocql.NewCluster(hosts...)
 	if clusterDialer != nil {
 		cluster.Dialer = clusterDialer

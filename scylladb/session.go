@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -89,8 +90,8 @@ func getProxyDialer(proxyStr, nameserverIP string) (proxyDialer proxy.ContextDia
 		return nil, err
 	}
 
-	// HTTP CONNECT proxy
 	if proxyURL.Scheme == "http" || proxyURL.Scheme == "https" {
+		// HTTP CONNECT
 		proxyDialer = &ProxyDialer{ProxyURL: proxyURL}
 	} else {
 		// SOCKS5
@@ -115,7 +116,7 @@ func getProxyDialer(proxyStr, nameserverIP string) (proxyDialer proxy.ContextDia
 		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
 			// Force TCP because proxies don't support UDP
 			dnsAddr := fmt.Sprintf("%s:53", nameserverIP)
-			fmt.Printf("DNS resolver: routing %s query to %s through proxy\n", network, dnsAddr)
+			log.Printf("DNS resolver: routing %s query to %s through proxy\n", network, dnsAddr)
 			conn, err := proxyDialer.DialContext(ctx, "tcp", dnsAddr)
 			if err != nil {
 				fmt.Printf("DNS resolver error: %v\n", err)
@@ -128,29 +129,54 @@ func getProxyDialer(proxyStr, nameserverIP string) (proxyDialer proxy.ContextDia
 
 }
 
-func NewClusterConfig(hosts []string) Cluster {
+// NewClusterConfig creates a new ScyllaDB cluster configuration.
+// It reads proxy settings from HTTPS_PROXY or HTTP_PROXY environment variables.
+// DNS resolution is not routed through the proxy when using this function.
+func NewClusterConfig(hosts []string) (newCluster *Cluster, err error) {
+	return NewClusterConfigWithDns(hosts, "")
+}
+
+// NewClusterConfigWithDns creates a new ScyllaDB cluster configuration with proxy and DNS support.
+//
+// Parameters:
+//   - hosts: ScyllaDB host addresses (can be hostnames or IPs with ports, e.g., "scylla.internal:9142")
+//   - dnsAddress: DNS server IP address for resolving hostnames through the proxy.
+//     When connecting through a proxy (HTTPS_PROXY or HTTP_PROXY env vars), hostnames
+//     need to be resolved on the proxy's network. This address specifies the DNS server
+//     accessible from the proxy host (e.g., "127.0.0.53" for systemd-resolved on the proxy).
+//     If empty, DNS resolution is not routed through the proxy.
+//
+// Proxy support:
+//   - SOCKS5 proxy: Set HTTPS_PROXY=socks5://host:port (e.g., via SSH tunnel: ssh -D 8888 user@host)
+//   - HTTP CONNECT proxy: Set HTTPS_PROXY=http://host:port (e.g., tinyproxy)
+//
+// Example:
+//
+//	// With SOCKS5 proxy and DNS through proxy
+//	cluster, err := NewClusterConfigWithDns([]string{"scylla.internal:9142"}, "127.0.0.53")
+func NewClusterConfigWithDns(hosts []string, dnsAddress string) (newCluster *Cluster, err error) {
 	// Check proxy first and set up DNS resolver before creating cluster
-	proxyStr := cmp.Or(os.Getenv("HTTPS_PROXY"), os.Getenv("HTTP_PROXY"))
+	proxyStr := cmp.Or(os.Getenv("HTTPS_PROXY"), os.Getenv("HTTP_PROXY"), os.Getenv("https_proxy"), os.Getenv("http_proxy"))
 	var clusterDialer gocql.Dialer
-	var err error
 
 	if proxyStr != "" {
-		clusterDialer, err = getProxyDialer(proxyStr, "127.0.0.53")
+		clusterDialer, err = getProxyDialer(proxyStr, dnsAddress)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 	}
 
+	// Create cluster after DNS resolver is configured
 	cluster := gocql.NewCluster(hosts...)
 	if clusterDialer != nil {
 		cluster.Dialer = clusterDialer
 	}
 	cluster.DisableInitialHostLookup = true
 	cluster.NumConns = 1
-	return Cluster{
+	return &Cluster{
 		Cluster:                cluster,
 		SystemAuthKeyspaceName: "system_auth",
-	}
+	}, nil
 }
 
 func (c *Cluster) CreateSession() error {
@@ -191,7 +217,7 @@ func (c *Cluster) SetTLS(caCert, clientCert, clientKey []byte, enableHostVerific
 		}
 		tlsConfig.Certificates = []tls.Certificate{cert}
 		tlsConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
-			return &cert, error(nil)
+			return &cert, nil
 		}
 	}
 	c.Cluster.SslOpts = &gocql.SslOptions{

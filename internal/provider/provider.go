@@ -151,7 +151,15 @@ func (p *scylladbProvider) Configure(ctx context.Context, req provider.Configure
 	tflog.Debug(ctx, "Creating scylladb client")
 
 	// Create a new scylladb client using the config
-	client := scylladb.NewClusterConfig([]string{host})
+	client, err := scylladb.NewClusterConfig([]string{host})
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Create a Cluster Configuration",
+			"An unexpected error was encountered trying to configure the cluster. "+
+				"Please verify the setup and the values of host and proxy setup. Then, try again.\n\n"+
+				err.Error(),
+		)
+	}
 
 	// Set system auth keyspace
 	if !data.SystemAuthKeyspace.IsNull() {
@@ -188,7 +196,6 @@ func (p *scylladbProvider) Configure(ctx context.Context, req provider.Configure
 	clientCert := []byte(os.Getenv("SCYLLADB_CLIENT_CERT"))
 	clientKey := []byte(os.Getenv("SCYLLADB_CLIENT_KEY"))
 	skipHostVerification := false
-	var err error
 
 	tflog.Debug(ctx, "TLS env vars", map[string]any{
 		"ca_cert_len":     len(os.Getenv("SCYLLADB_CA_CERT")),
@@ -279,8 +286,8 @@ func (p *scylladbProvider) Configure(ctx context.Context, req provider.Configure
 
 	// Make the HashiCups client available during DataSource and Resource
 	// type Configure methods.
-	resp.DataSourceData = &client
-	resp.ResourceData = &client
+	resp.DataSourceData = client
+	resp.ResourceData = client
 
 	tflog.Info(ctx, "Configured ScyllaDB client", map[string]any{"success": true})
 }

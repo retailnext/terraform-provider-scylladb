@@ -36,6 +36,7 @@ type scylladbProvider struct {
 // scylladbProviderModel describes the provider data model.
 type scylladbProviderModel struct {
 	Host                 types.String            `tfsdk:"host"`
+	DnsAddress           types.String            `tfsdk:"dns_address"`
 	SystemAuthKeyspace   types.String            `tfsdk:"system_auth_keyspace"`
 	SkipHostVerification types.Bool              `tfsdk:"skip_host_verification"`
 	CAcertFile           types.String            `tfsdk:"ca_cert_file"`
@@ -64,6 +65,10 @@ func (p *scylladbProvider) Schema(ctx context.Context, req provider.SchemaReques
 		Attributes: map[string]schema.Attribute{
 			"host": schema.StringAttribute{
 				MarkdownDescription: "Hostname or IP address of the ScyllaDB instance with a port if necessary. e.g. localhost:9042",
+				Optional:            true,
+			},
+			"dns_address": schema.StringAttribute{
+				MarkdownDescription: "DNS server IP address for resolving hostnames through the proxy. This is relevant when you use a proxy and the hostname must be resolved through the network of the proxy",
 				Optional:            true,
 			},
 			"system_auth_keyspace": schema.StringAttribute{
@@ -151,7 +156,19 @@ func (p *scylladbProvider) Configure(ctx context.Context, req provider.Configure
 	tflog.Debug(ctx, "Creating scylladb client")
 
 	// Create a new scylladb client using the config
-	client := scylladb.NewClusterConfig([]string{host})
+	var dnsAddress string
+	if !data.DnsAddress.IsNull() {
+		dnsAddress = data.DnsAddress.ValueString()
+	}
+	client, err := scylladb.NewClusterConfigWithDns([]string{host}, dnsAddress)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Create a Cluster Configuration",
+			"An unexpected error was encountered trying to configure the cluster. "+
+				"Please verify the setup and the values of host and dnsAddress and try again.\n\n"+
+				err.Error(),
+		)
+	}
 
 	// Set system auth keyspace
 	if !data.SystemAuthKeyspace.IsNull() {
@@ -188,7 +205,6 @@ func (p *scylladbProvider) Configure(ctx context.Context, req provider.Configure
 	clientCert := []byte(os.Getenv("SCYLLADB_CLIENT_CERT"))
 	clientKey := []byte(os.Getenv("SCYLLADB_CLIENT_KEY"))
 	skipHostVerification := false
-	var err error
 
 	tflog.Debug(ctx, "TLS env vars", map[string]any{
 		"ca_cert_len":     len(os.Getenv("SCYLLADB_CA_CERT")),
@@ -279,8 +295,8 @@ func (p *scylladbProvider) Configure(ctx context.Context, req provider.Configure
 
 	// Make the HashiCups client available during DataSource and Resource
 	// type Configure methods.
-	resp.DataSourceData = &client
-	resp.ResourceData = &client
+	resp.DataSourceData = client
+	resp.ResourceData = client
 
 	tflog.Info(ctx, "Configured ScyllaDB client", map[string]any{"success": true})
 }

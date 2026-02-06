@@ -59,9 +59,12 @@ func TestSetmTLS(t *testing.T) {
 		t.Fatal("certificates are not initialized")
 	}
 	host := testutil.NewTestScyllaContainerMTLS(t, caCert, serverCert)
-	cluster := NewClusterConfig([]string{host})
+	cluster, err := NewClusterConfig([]string{host})
+	if err != nil {
+		t.Fatalf("failed to create a new cluster config: %s", err)
+	}
 	cluster.SetSystemAuthKeyspace("system")
-	err := cluster.SetTLS(caCertPEM, clientCertPEM, clientKeyPEM, false)
+	err = cluster.SetTLS(caCertPEM, clientCertPEM, clientKeyPEM, false)
 	if err != nil {
 		t.Fatalf("failed to set TLS: %s", err)
 	}

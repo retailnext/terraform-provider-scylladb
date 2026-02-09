@@ -85,14 +85,17 @@ resource "scylladb_grant" "admin_alter_cyclist_name" {
 }
 
 func setupTestKeyspaceAndTable(t *testing.T, hosts []string) {
-	cluster := scylladb.NewClusterConfig(hosts)
+	cluster, err := scylladb.NewClusterConfig(hosts)
+	if err != nil {
+		t.Fatalf("failed to create a new cluster config: %s", err)
+	}
 	cluster.SetSystemAuthKeyspace("system")
 	cluster.SetUserPasswordAuth("cassandra", "cassandra")
 	if err := cluster.CreateSession(); err != nil {
 		t.Fatalf("failed to create session: %s", err)
 	}
 	defer cluster.Session.Close()
-	err := cluster.CreateKeyspace(scylladb.Keyspace{
+	err = cluster.CreateKeyspace(scylladb.Keyspace{
 		Name:              "cycling",
 		ReplicationClass:  "SimpleStrategy",
 		ReplicationFactor: 1,

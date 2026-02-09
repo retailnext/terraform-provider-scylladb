@@ -13,13 +13,16 @@ import (
 // newTestCluster creates a Cluster connected to a test ScyllaDB container.
 func newTestCluster(t *testing.T) *Cluster {
 	host := testutil.NewTestContainer(t)
-	cluster := NewClusterConfig([]string{host})
+	cluster, err := NewClusterConfig([]string{host})
+	if err != nil {
+		t.Fatalf("failed to create a new cluster config: %s", err)
+	}
 	cluster.SetSystemAuthKeyspace("system")
 	cluster.SetUserPasswordAuth("cassandra", "cassandra")
 	if err := cluster.CreateSession(); err != nil {
 		t.Fatalf("failed to create session: %s", err)
 	}
-	return &cluster
+	return cluster
 }
 
 func TestGetRoleCassandra(t *testing.T) {

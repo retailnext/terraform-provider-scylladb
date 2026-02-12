@@ -4,7 +4,9 @@ package scylladb
 
 import (
 	"bytes"
+	"fmt"
 	"log"
+	"strings"
 	"text/template"
 )
 
@@ -91,3 +93,51 @@ func (c *Cluster) UpdateGrant(fromGrant, toGrant Grant) error {
 	}
 	return c.CreateGrant(toGrant)
 }
+
+func (c *Cluster) GetPermissionStrs(grant Grant) (permissions []string, err error) {
+	resourceName := getResourceName(grant)
+	if resourceName == "" {
+		return
+	}
+
+	// the query should return only 1 record even without LIMIT 1.
+	queryStr := fmt.Sprintf("SELECT permissions FROM %s.role_permissions WHERE role = ? AND resource = ? LIMIT 1", c.SystemAuthKeyspaceName)
+	log.Printf("Executing ReadGrant query: %s", queryStr)
+
+	err = c.Session.Query(queryStr, grant.RoleName, resourceName).Scan(&permissions)
+	return
+}
+
+func getResourceName(grant Grant) string {
+	switch strings.ToUpper(grant.ResourceType) {
+	case "ALL KEYSPACES":
+		return "data"
+	case "KEYSPACE":
+		return fmt.Sprintf("data/%s", grant.Keyspace)
+	case "TABLE":
+		return fmt.Sprintf("data/%s/%s", grant.Keyspace, grant.Identifier)
+	case "ALL ROLES":
+		return "roles"
+	case "ROLE":
+		return fmt.Sprintf("roles/%s", grant.Keyspace)
+	default:
+		return ""
+	}
+}
+
+// func (g Grant) GetExpandedPermissions() []string {
+// 	origPerm := strings.ToUpper(g.Privilege)
+// 	if origPerm != "ALL PERMISSIONS" {
+// 		return []string{origPerm}
+// 	}
+// 	switch strings.ToUpper(g.ResourceType) {
+// 	case "ALL KEYSPACES", "KEYSPACE":
+// 		return []string{"ALTER", "AUTHORIZE", "CREATE", "DROP", "MODIFY", "SELECT"}
+// 	case "TABLE":
+// 		return []string{"ALTER", "AUTHORIZE", "DROP", "MODIFY", "SELECT"}
+// 	case "ALL ROLES", "ROLE":
+// 		return []string{"ALTER", "AUTHORIZE", "DROP"}
+// 	default:
+// 		return []string{origPerm}
+// 	}
+// }

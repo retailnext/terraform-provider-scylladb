@@ -5,13 +5,17 @@ package provider
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/retailnext/terraform-provider-scylladb/scylladb"
 )
 
@@ -28,13 +32,14 @@ type grantResource struct {
 }
 
 type grantResourceModel struct {
-	ID           types.String `tfsdk:"id"`
-	LastUpdated  types.String `tfsdk:"last_updated"`
-	RoleName     types.String `tfsdk:"role_name"`
-	Privilege    types.String `tfsdk:"privilege"`
-	ResourceType types.String `tfsdk:"resource_type"`
-	Keyspace     types.String `tfsdk:"keyspace"`
-	Identifier   types.String `tfsdk:"identifier"`
+	ID           types.String   `tfsdk:"id"`
+	LastUpdated  types.String   `tfsdk:"last_updated"`
+	RoleName     types.String   `tfsdk:"role_name"`
+	Privilege    types.String   `tfsdk:"privilege"`
+	ResourceType types.String   `tfsdk:"resource_type"`
+	Keyspace     types.String   `tfsdk:"keyspace"`
+	Identifier   types.String   `tfsdk:"identifier"`
+	Permissions  []types.String `tfsdk:"permissions"`
 }
 
 func (g *grantResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -58,12 +63,40 @@ func (g *grantResource) Schema(ctx context.Context, req resource.SchemaRequest, 
 				Required:    true,
 			},
 			"privilege": schema.StringAttribute{
-				Description: "The privilege to grant (e.g. ALL, CREATE, ALTER).",
+				Description: "The privilege to grant.",
 				Required:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOfCaseInsensitive(
+						"ALL PERMISSIONS",
+						"ALTER",
+						"AUTHORIZE",
+						"CREATE",
+						"DESCRIBE",
+						"DROP",
+						"EXECUTE",
+						"MODIFY",
+						"SELECT",
+					),
+				},
 			},
 			"resource_type": schema.StringAttribute{
 				Description: "The type of resource (e.g., ALL KEYSPACES, KEYSPACE, TABLE).",
 				Required:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOfCaseInsensitive(
+						"ALL FUNCTIONS",
+						"ALL FUNCTIONS IN KEYSPACE",
+						"FUNCTION",
+						"ALL KEYSPACES",
+						"KEYSPACE",
+						"TABLE",
+						"ALL MBEANS",
+						"MBEAN",
+						"MBEANS",
+						"ALL ROLES",
+						"ROLE",
+					),
+				},
 			},
 			"keyspace": schema.StringAttribute{
 				Description: "The keyspace of the resource.",
@@ -72,6 +105,11 @@ func (g *grantResource) Schema(ctx context.Context, req resource.SchemaRequest, 
 			"identifier": schema.StringAttribute{
 				Description: "The identifier of the resource (e.g., table name).",
 				Optional:    true,
+			},
+			"permissions": schema.ListAttribute{
+				Computed:    true,
+				Description: "The recorded permission for the grant",
+				ElementType: types.StringType,
 			},
 		},
 	}
@@ -118,12 +156,26 @@ func (g *grantResource) Create(ctx context.Context, req resource.CreateRequest, 
 		)
 		return
 	}
+
+	permissions, err := g.client.GetPermissionStrs(grant)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error Getting Grant Permissions",
+			err.Error(),
+		)
+		return
+	}
+	for _, permission := range permissions {
+		plan.Permissions = append(plan.Permissions, types.StringValue(permission))
+	}
+
 	plan.ID = types.StringValue(fmt.Sprintf("%s|%s|%s|%s|%s", grant.RoleName, grant.Privilege, grant.ResourceType, grant.Keyspace, grant.Identifier))
 	plan.LastUpdated = types.StringValue(time.Now().Format(time.RFC850))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 func (g *grantResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	tflog.Info(ctx, "Reading grant")
 	var state grantResourceModel
 
 	// Read state.
@@ -132,13 +184,14 @@ func (g *grantResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		return
 	}
 
-	curPerms, found, err := g.client.GetGrant(scylladb.Grant{
+	grant := scylladb.Grant{
 		RoleName:     state.RoleName.ValueString(),
 		Privilege:    state.Privilege.ValueString(),
 		ResourceType: state.ResourceType.ValueString(),
 		Keyspace:     state.Keyspace.ValueString(),
 		Identifier:   state.Identifier.ValueString(),
-	})
+	}
+	_, _, err := g.client.GetGrant(grant)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading Grant",
@@ -147,12 +200,33 @@ func (g *grantResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		return
 	}
 
-	if !found || len(curPerms) == 0 {
+	tflog.Info(ctx, fmt.Sprintf("Got grant: %v", grant))
+
+	permissions, err := g.client.GetPermissionStrs(grant)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error Reading Grant Permissions",
+			err.Error(),
+		)
+		return
+	}
+
+	statePermissions := []string{}
+	for _, statePermission := range state.Permissions {
+		statePermissions = append(statePermissions, statePermission.ValueString())
+	}
+	tflog.Info(ctx, fmt.Sprintf("got permissions: from db = %v | from state = %v", permissions, statePermissions))
+	tflog.Info(ctx, fmt.Sprintf("got permissions: %v", permissions))
+
+	if slices.Compare(permissions, statePermissions) != 0 {
+		tflog.Warn(ctx, "Permissions have changed outside of Terraform", map[string]any{
+			"state":  statePermissions,
+			"actual": permissions})
 		resp.State.RemoveResource(ctx)
 		return
 	}
 
-	// No changes to state as all attributes are known from the ID and plan.
+	// Set refreshed state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -171,6 +245,10 @@ func (g *grantResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		ResourceType: state.ResourceType.ValueString(),
 		Keyspace:     state.Keyspace.ValueString(),
 		Identifier:   state.Identifier.ValueString(),
+	}
+	fromPermissions := []string{}
+	for _, permission := range state.Permissions {
+		fromPermissions = append(fromPermissions, permission.ValueString())
 	}
 
 	// Retrieve values from plan

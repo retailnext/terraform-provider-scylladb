@@ -58,6 +58,12 @@ func TestGrantMethods(t *testing.T) {
 
 	assert.Equal(t, expectedPermissions, permissions)
 
+	permStrs, err := cluster.GetPermissionStrs(grant)
+	if err != nil {
+		t.Fatalf("failed to get grant permission strings: %s", err)
+	}
+	assert.Equal(t, []string{"SELECT"}, permStrs)
+
 	err = cluster.DeleteGrant(grant)
 	if err != nil {
 		t.Fatalf("failed to delete grant: %s", err)

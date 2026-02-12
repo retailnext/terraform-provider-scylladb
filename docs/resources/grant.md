@@ -17,7 +17,7 @@ Grant resource
 
 ### Required
 
-- `privilege` (String) The privilege to grant (e.g. ALL, CREATE, ALTER).
+- `privilege` (String) The privilege to grant.
 - `resource_type` (String) The type of resource (e.g., ALL KEYSPACES, KEYSPACE, TABLE).
 - `role_name` (String) The role to which the privilege is granted.
 
@@ -30,3 +30,4 @@ Grant resource
 
 - `id` (String) The ID of the grant.
 - `last_updated` (String) The timestamp of the last update to the grant.
+- `permissions` (List of String) The recorded permission for the grant

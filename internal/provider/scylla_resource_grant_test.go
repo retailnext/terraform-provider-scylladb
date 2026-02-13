@@ -4,6 +4,7 @@ package provider
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -110,4 +111,36 @@ func setupTestKeyspaceAndTable(t *testing.T, hosts []string) {
 	if err := cluster.Session.Query(createTableCQL).Exec(); err != nil {
 		t.Fatalf("failed to create table: %s", err)
 	}
+}
+
+func TestAccGrantResourceInvalid(t *testing.T) {
+	devClusterHost := testutil.NewTestContainer(t)
+	providerConfig := fmt.Sprintf(providerConfigFmt, devClusterHost)
+
+	// Set up initial keyspace and table
+	setupTestKeyspaceAndTable(t, []string{devClusterHost})
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Test invalid privilege - terraform plan should fail
+			{
+				Config: providerConfig + `
+resource "scylladb_role" "admin" {
+	role = "admin"
+	can_login = false
+	is_superuser = false
+}
+resource "scylladb_grant" "admin_alter_keyspace" {
+  role_name = scylladb_role.admin.role
+  privilege = "INVALID"
+  resource_type = "KEYSPACE"
+  keyspace   = "cycling"
+}
+`,
+				ExpectError: regexp.MustCompile(`(?i)privilege.*must be one of`),
+				PlanOnly:    true,
+			},
+		},
+	})
 }

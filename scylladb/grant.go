@@ -4,8 +4,13 @@ package scylladb
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"log"
+	"strings"
 	"text/template"
+
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 )
 
 const (
@@ -60,7 +65,24 @@ func (c *Cluster) DeleteGrant(grant Grant) error {
 	return c.Session.Query(queryStr).Exec()
 }
 
-func (c *Cluster) GetGrant(grant Grant) ([]Permission, bool, error) {
+func (c *Cluster) GetGrantPermissions(grant Grant) (permissions []string, err error) {
+	// LIST statement for a table may return the permission for keyspaces. Referring to
+	// role_permissions is more accurate
+	if strings.Contains(strings.ToUpper(grant.ResourceType), "KEYSPACE") || strings.ToUpper(grant.ResourceType) == "TABLE" {
+		return c.GetRolePermissions(grant)
+	}
+
+	grantPerms, _, err := c.ListGrant(grant)
+	if err != nil {
+		return
+	}
+	for _, grantPerm := range grantPerms {
+		permissions = append(permissions, grantPerm.Permission)
+	}
+	return
+}
+
+func (c *Cluster) ListGrant(grant Grant) ([]Permission, bool, error) {
 	var queryBuffer bytes.Buffer
 	err := templateRead.Execute(&queryBuffer, grant)
 	if err != nil {
@@ -90,4 +112,56 @@ func (c *Cluster) UpdateGrant(fromGrant, toGrant Grant) error {
 		return err
 	}
 	return c.CreateGrant(toGrant)
+}
+
+func (c *Cluster) GetRolePermissions(grant Grant) (permissions []string, err error) {
+	resourceName := getResourceName(grant)
+	if resourceName == "" {
+		return
+	}
+
+	// the query should return only 1 record even without LIMIT 1.
+	queryStr := fmt.Sprintf("SELECT permissions FROM %s.role_permissions WHERE role = ? AND resource = ? LIMIT 1", c.SystemAuthKeyspaceName)
+	log.Printf("Executing ReadGrant query: %s", queryStr)
+
+	err = c.Session.Query(queryStr, grant.RoleName, resourceName).Scan(&permissions)
+	if errors.Is(err, gocql.ErrNotFound) {
+		// No permissions are found - returning an empty slice, not an error
+		return []string{}, nil
+	}
+	return
+}
+
+func getResourceName(grant Grant) string {
+	switch strings.ToUpper(grant.ResourceType) {
+	case "ALL KEYSPACES":
+		return "data"
+	case "KEYSPACE":
+		return fmt.Sprintf("data/%s", grant.Keyspace)
+	case "TABLE":
+		return fmt.Sprintf("data/%s/%s", grant.Keyspace, grant.Identifier)
+	case "ALL ROLES":
+		return "roles"
+	case "ROLE":
+		return fmt.Sprintf("roles/%s", grant.Keyspace)
+	default:
+		return ""
+	}
+}
+
+func (g Grant) GetExpandedPermissions() []string {
+	origPerm := strings.ToUpper(g.Privilege)
+	if origPerm != "ALL PERMISSIONS" {
+		return []string{origPerm}
+	}
+	switch strings.ToUpper(g.ResourceType) {
+	case "ALL KEYSPACES", "KEYSPACE":
+		return []string{"ALTER", "AUTHORIZE", "CREATE", "DROP", "MODIFY", "SELECT"}
+	case "TABLE":
+		return []string{"ALTER", "AUTHORIZE", "DROP", "MODIFY", "SELECT"}
+	case "ALL ROLES", "ROLE":
+		return []string{"ALTER", "AUTHORIZE", "DROP"}
+	default:
+		return []string{origPerm}
+	}
 }

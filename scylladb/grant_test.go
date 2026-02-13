@@ -38,7 +38,7 @@ func TestGrantMethods(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create grant: %s", err)
 	}
-	permissions, found, err := cluster.GetGrant(grant)
+	permissions, found, err := cluster.ListGrant(grant)
 	if err != nil {
 		t.Fatalf("failed to get grant: %s", err)
 	}
@@ -58,12 +58,18 @@ func TestGrantMethods(t *testing.T) {
 
 	assert.Equal(t, expectedPermissions, permissions)
 
+	permStrs, err := cluster.GetRolePermissions(grant)
+	if err != nil {
+		t.Fatalf("failed to get grant permission strings: %s", err)
+	}
+	assert.Equal(t, []string{"SELECT"}, permStrs)
+
 	err = cluster.DeleteGrant(grant)
 	if err != nil {
 		t.Fatalf("failed to delete grant: %s", err)
 	}
 
-	_, found, err = cluster.GetGrant(grant)
+	_, found, err = cluster.ListGrant(grant)
 	if err != nil {
 		t.Fatalf("failed to get grant after deletion: %s", err)
 	}
@@ -71,6 +77,42 @@ func TestGrantMethods(t *testing.T) {
 	if found {
 		t.Fatalf("grant still found after deletion")
 	}
+}
+
+func TestGrantPermissions(t *testing.T) {
+	cluster := newTestClusterWithTableAndRole(t)
+	defer cluster.Session.Close()
+
+	keyspaceGrant := Grant{
+		RoleName:     "testRole",
+		Privilege:    "SELECT",
+		ResourceType: "KEYSPACE",
+		Keyspace:     "cycling",
+	}
+	err := cluster.CreateGrant(keyspaceGrant)
+	if err != nil {
+		t.Fatalf("failed to create keyspace grant: %s", err)
+	}
+	tableGrant := Grant{
+		RoleName:     "testRole",
+		Privilege:    "ALL PERMISSIONS",
+		ResourceType: "TABLE",
+		Keyspace:     "cycling",
+		Identifier:   "cyclist_name",
+	}
+	err = cluster.CreateGrant(tableGrant)
+	if err != nil {
+		t.Fatalf("failed to create table grant: %s", err)
+	}
+
+	// Get the permissions of tableGrant
+	permissions, err := cluster.GetGrantPermissions(tableGrant)
+	if err != nil {
+		t.Fatalf("failed to get grant: %s", err)
+	}
+
+	expectedPermissions := tableGrant.GetExpandedPermissions()
+	assert.Equal(t, expectedPermissions, permissions)
 }
 
 func newTestClusterWithTableAndRole(t *testing.T) *Cluster {

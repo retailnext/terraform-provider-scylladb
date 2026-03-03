@@ -31,7 +31,7 @@ func NewTestContainer(t *testing.T) string {
 		testcontainers.WithExposedPorts("9042/tcp"),
 		testcontainers.WithWaitStrategy(
 			wait.ForListeningPort("9042/tcp"),
-			// wait.ForLog("Ready to accept connections"),
+			wait.ForLog("initialization completed"),
 		),
 		testcontainers.WithFiles(testcontainers.ContainerFile{
 			HostFilePath:      scyllaConfig,
@@ -88,7 +88,7 @@ func NewTestScyllaContainerMTLS(t *testing.T, caCert *Cert, serverCert *Cert) (c
 		testcontainers.WithExposedPorts("9042/tcp"),
 		testcontainers.WithWaitStrategy(
 			wait.ForListeningPort("9042/tcp"),
-			// wait.ForLog("Ready to accept connections"),
+			wait.ForLog("initialization completed"),
 		),
 		testcontainers.WithFiles(
 			testcontainers.ContainerFile{

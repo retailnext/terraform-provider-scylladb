@@ -3,7 +3,6 @@
 package scylladb
 
 import (
-	"cmp"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -12,7 +11,6 @@ import (
 	"log"
 	"net"
 	"net/url"
-	"os"
 
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"golang.org/x/net/proxy"
@@ -26,6 +24,7 @@ type Cluster struct {
 
 type ProxyHostDialer struct {
 	proxyDialer proxy.Dialer
+	proxyScheme string
 	hosts       []string
 	tlsConfig   *tls.Config
 }
@@ -34,8 +33,9 @@ func (d *ProxyHostDialer) DialHost(ctx context.Context, host *gocql.HostInfo) (d
 	// Construct connection through proxy
 	var conn net.Conn
 	var connAddr string
+	log.Printf("Asked to connect to hosts %v through proxy", host.HostnameAndPort())
 	for _, hostAddr := range d.hosts {
-		log.Printf("Connecting to %s via SOCKS5 proxy", hostAddr)
+		log.Printf("Connecting to %s via proxy", hostAddr)
 		conn, err = d.proxyDialer.Dial("tcp", hostAddr)
 		if err == nil {
 			connAddr = hostAddr
@@ -59,36 +59,35 @@ func (d *ProxyHostDialer) DialHost(ctx context.Context, host *gocql.HostInfo) (d
 }
 
 func getProxyHostDialer(hosts []string, proxyAddr string) (proxyHostDialer *ProxyHostDialer, err error) {
-	// Create SOCKS5 dialer
-	socksDialer, err := proxy.SOCKS5("tcp", proxyAddr, nil, proxy.Direct)
+	proxyURL, err := url.Parse(proxyAddr)
 	if err != nil {
-		log.Printf("Failed to create SOCKS5 dialer: %v", err)
+		log.Printf("fails to parse proxy address %v. Returning error", proxyAddr)
+		return nil, fmt.Errorf("failed to parse proxy address %v: %v", proxyAddr, err)
+	}
+
+	if proxyURL.Host == "" {
+		log.Printf("No host found after parsing proxy URL %v. Trying again after assuming http scheme", proxyAddr)
+		newProxyStr := "http://" + proxyAddr
+		proxyURL, err = url.Parse(newProxyStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse proxy address %v: %v", proxyAddr, err)
+		}
+	}
+
+	// Create dialer
+	proxyDialer, err := proxy.FromURL(proxyURL, proxy.Direct)
+	if err != nil {
+		log.Printf("Failed to create proxy dialer: %v", err)
 		return nil, err
 	}
 
 	log.Println("proxyhostdialer is set")
 
 	return &ProxyHostDialer{
-		proxyDialer: socksDialer,
+		proxyDialer: proxyDialer,
+		proxyScheme: proxyURL.Scheme,
 		hosts:       hosts,
 	}, nil
-}
-
-func getProxyAddrFromEnv() (string, error) {
-	proxyStr := cmp.Or(os.Getenv("HTTPS_PROXY"), os.Getenv("HTTP_PROXY"), os.Getenv("https_proxy"), os.Getenv("http_proxy"))
-	if proxyStr == "" {
-		// no env vars are set
-		return "", nil
-	}
-	proxyURL, err := url.Parse(proxyStr)
-	if err != nil || proxyURL.Host == "" {
-		log.Printf("fails to parse %v. Returning the original value as address", proxyStr)
-		return proxyStr, nil //nolint:nilerr // intentionally swallowing parse error. falling back to raw string
-	}
-	if proxyURL.Scheme == "http" || proxyURL.Scheme == "https" {
-		return "", fmt.Errorf("http or https proxy should not be used")
-	}
-	return proxyURL.Host, nil
 }
 
 func NewClusterConfig(hosts []string) (newCluster *Cluster, err error) {
@@ -96,15 +95,12 @@ func NewClusterConfig(hosts []string) (newCluster *Cluster, err error) {
 }
 
 func NewClusterConfigWithProxy(hosts []string, proxyAddr string) (newCluster *Cluster, err error) {
-	// Setup proxy if necessary
-	if proxyAddr == "" {
-		proxyAddr, err = getProxyAddrFromEnv()
-		if err != nil {
-			return
-		}
-		log.Printf("proxy host set up is found: %v", proxyAddr)
-	}
 	var clusterHostDialer gocql.HostDialer
+
+	// if proxyAddr is not provided as an argument, check environment variables
+	if proxyAddr == "" {
+		proxyAddr = httpProxyEnv.Get()
+	}
 	if proxyAddr != "" {
 		clusterHostDialer, err = getProxyHostDialer(hosts, proxyAddr)
 		if err != nil {
@@ -178,7 +174,7 @@ func (c *Cluster) SetTLS(caCert, clientCert, clientKey []byte, enableHostVerific
 	}
 
 	// When using a custom HostDialer (ProxyHostDialer), gocql ignores SslOpts;
-	// Dialer must handle TLS wrapping. Progating tlsConfig to ProxyHostDialer.
+	// Dialer must handle TLS wrapping. Propagating tlsConfig to ProxyHostDialer.
 	if proxyHostDialer, ok := c.Cluster.HostDialer.(*ProxyHostDialer); ok {
 		proxyHostDialer.tlsConfig = tlsConfig
 	}

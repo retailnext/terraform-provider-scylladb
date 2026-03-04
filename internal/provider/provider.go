@@ -159,6 +159,9 @@ func (p *scylladbProvider) Configure(ctx context.Context, req provider.Configure
 				"Please verify the setup and the values of host and proxy setup. Then, try again.\n\n"+
 				err.Error(),
 		)
+
+		// fail fast if the cluster configuration cannot be created, as the client will not be usable and there is no value in proceeding with further configuration attempts
+		return
 	}
 
 	// Set system auth keyspace

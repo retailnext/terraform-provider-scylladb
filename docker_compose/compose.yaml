@@ -3,7 +3,7 @@
 services:
   scylla:
     container_name: scylla-node
-    image: scylladb/scylla:2025.4.1
+    image: scylladb/scylla:2025.4.5
     command: --developer-mode 1 --smp 1 --overprovisioned 1
     ports:
       - "9042:9042"

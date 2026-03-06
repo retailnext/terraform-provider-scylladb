@@ -1,0 +1,16 @@
+---
+page_title: "{{.Type}} {{.Name}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Reads an existing ScyllaDB role.
+---
+
+# {{.Type}} {{.Name}}
+
+Reads an existing ScyllaDB role.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/scylladb_role/data-source.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}

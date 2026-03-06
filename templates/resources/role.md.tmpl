@@ -1,0 +1,25 @@
+---
+page_title: "{{.Type}} {{.Name}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Type}} {{.Name}}
+
+Manages a ScyllaDB [role](https://docs.scylladb.com/stable/operating-scylla/security/rbac-usecase.html).
+A role can represent a user (with `can_login = true`) or a permission group that other roles inherit
+from. Note that the resource does not manage the password of a role. It is recommended to use separate
+means to manage role passwords, such as a HashiCorp Vault database engine. This allows for better security
+practices and avoids storing sensitive information in Terraform state files. The resource focuses on
+managing role attributes and permissions.
+
+## Example Usage
+
+{{ tffile "examples/resources/scylladb_role/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+{{ codefile "shell" "examples/resources/scylladb_role/import.sh" }}

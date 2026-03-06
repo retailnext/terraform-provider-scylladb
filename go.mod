@@ -117,4 +117,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/gocql/gocq => github.com/scylladb/gocql v1.16.0
+replace github.com/gocql/gocq => github.com/scylladb/gocql v1.17.3

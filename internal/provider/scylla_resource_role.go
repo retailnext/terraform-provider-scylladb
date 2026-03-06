@@ -32,12 +32,12 @@ type roleResource struct {
 
 // roleResourceModel maps the resource source schema data.
 type roleResourceModel struct {
-	ID          types.String   `tfsdk:"id"`
-	LastUpdated types.String   `tfsdk:"last_updated"`
-	Role        types.String   `tfsdk:"role"`
-	CanLogin    types.Bool     `tfsdk:"can_login"`
-	IsSuperuser types.Bool     `tfsdk:"is_superuser"`
-	MemberOf    []types.String `tfsdk:"member_of"`
+	ID          types.String `tfsdk:"id"`
+	LastUpdated types.String `tfsdk:"last_updated"`
+	Role        types.String `tfsdk:"role"`
+	CanLogin    types.Bool   `tfsdk:"can_login"`
+	IsSuperuser types.Bool   `tfsdk:"is_superuser"`
+	MemberOf    types.List   `tfsdk:"member_of"`
 }
 
 // Metadata returns the resource type name.
@@ -49,7 +49,7 @@ func (r *roleResource) Metadata(ctx context.Context, req resource.MetadataReques
 func (r *roleResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
-		MarkdownDescription: "Role resource",
+		MarkdownDescription: "Manages a ScyllaDB role.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "The name of the role to look up.",
@@ -75,7 +75,7 @@ func (r *roleResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 				Optional:    true,
 			},
 			"member_of": schema.ListAttribute{
-				Optional:    true,
+				Computed:    true,
 				Description: "a list of members of the role",
 				ElementType: types.StringType,
 			},
@@ -128,6 +128,12 @@ func (r *roleResource) Create(ctx context.Context, req resource.CreateRequest, r
 	// Populate computed attribute values
 	plan.ID = types.StringValue(role.Role)
 	plan.LastUpdated = types.StringValue(time.Now().Format(time.RFC850))
+	memberOf, diags := types.ListValueFrom(ctx, types.StringType, []string{})
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	plan.MemberOf = memberOf
 
 	// Set state to fully populate data
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
@@ -156,6 +162,12 @@ func (r *roleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
+	memberOf, diags := types.ListValueFrom(ctx, types.StringType, curRole.MemberOf)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	// Overwrite with refreshed state.
 	state = roleResourceModel{
 		ID:          types.StringValue(curRole.Role),
@@ -163,9 +175,7 @@ func (r *roleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		CanLogin:    types.BoolValue(curRole.CanLogin),
 		IsSuperuser: types.BoolValue(curRole.IsSuperuser),
 		LastUpdated: types.StringValue(time.Now().Format(time.RFC850)),
-	}
-	for _, member := range curRole.MemberOf {
-		state.MemberOf = append(state.MemberOf, types.StringValue(member))
+		MemberOf:    memberOf,
 	}
 
 	// Set state.
@@ -196,7 +206,16 @@ func (r *roleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		)
 		return
 	}
-	// Populate Compuated attribute values
+
+	// member_of is computed and not affected by this update; preserve from state.
+	var state roleResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	plan.MemberOf = state.MemberOf
+
+	// Populate computed attribute values
 	plan.ID = types.StringValue(role.Role)
 	plan.LastUpdated = types.StringValue(time.Now().Format(time.RFC850))
 
@@ -238,13 +257,9 @@ func (r *roleResource) ImportState(ctx context.Context, req resource.ImportState
 }
 
 func planToRole(plan roleResourceModel) scylladb.Role {
-	role := scylladb.Role{
+	return scylladb.Role{
 		Role:        plan.Role.ValueString(),
 		CanLogin:    plan.CanLogin.ValueBool(),
 		IsSuperuser: plan.IsSuperuser.ValueBool(),
 	}
-	for _, member := range plan.MemberOf {
-		role.MemberOf = append(role.MemberOf, member.ValueString())
-	}
-	return role
 }

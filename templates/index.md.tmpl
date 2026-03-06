@@ -1,0 +1,31 @@
+---
+page_title: "Provider: ScyllaDB"
+description: |-
+  Use the ScyllaDB provider to manage roles and grants in a ScyllaDB cluster.
+---
+
+# ScyllaDB Provider
+
+Use the ScyllaDB provider to manage access control in a [ScyllaDB](https://www.scylladb.com/) cluster,
+including roles, keyspace grants, and table-level permissions. The provider supports both password-based
+and TLS client certificate authentication. The provider also supports proxy connections when `HTTP_PROXY`
+or `HTTPS_PROXY` environment variables are set. Note that this provider does not manage the lifecycle
+of ScyllaDB clusters or keyspaces. It is focused on access control management.
+
+## Example Usage
+
+{{ tffile "examples/provider/provider.tf" }}
+
+## Environment Variables
+
+The following environment variables are supported. They are read first; an explicit provider attribute overrides them.
+
+| Variable | Provider Attribute | Description |
+|---|---|---|
+| `SCYLLADB_HOST` | `host` | Hostname or IP address of the ScyllaDB instance |
+| `SCYLLADB_PASSWORD` | `auth_login_userpass.password` | Password for username/password authentication |
+| `SCYLLADB_CA_CERT` | — | PEM-encoded CA certificate (alternative to `ca_cert_file`) |
+| `SCYLLADB_CLIENT_CERT` | — | PEM-encoded client certificate (alternative to `auth_tls.cert_file`) |
+| `SCYLLADB_CLIENT_KEY` | — | PEM-encoded client private key (alternative to `auth_tls.key_file`) |
+
+{{ .SchemaMarkdown }}

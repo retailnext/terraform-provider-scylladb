@@ -49,7 +49,7 @@ func (g *grantResource) Metadata(ctx context.Context, req resource.MetadataReque
 
 func (g *grantResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Grant resource",
+		MarkdownDescription: "Manages a privilege grant on a ScyllaDB resource.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "The ID of the grant.",
@@ -89,8 +89,8 @@ func (g *grantResource) Schema(ctx context.Context, req resource.SchemaRequest, 
 						"ALL KEYSPACES",
 						"KEYSPACE",
 						"TABLE",
-						"ALL ROLES",
-						"ROLE",
+						// "ALL USERS",
+						// "USER",
 					),
 				},
 			},

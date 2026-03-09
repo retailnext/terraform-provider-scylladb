@@ -87,3 +87,34 @@ func TestSetmTLS(t *testing.T) {
 
 	assert.Equal(t, expectedRole, role)
 }
+
+func TestCreateProxyHostMap(t *testing.T) {
+	tests := []struct {
+		name         string
+		hosts        []string
+		wantProxyMap map[string]string
+	}{
+		{
+			name:         "Single hostname without port",
+			hosts:        []string{"test-client.scylla-cluster.svc"},
+			wantProxyMap: map[string]string{"127.0.0.1": "test-client.scylla-cluster.svc:9042"},
+		},
+		{
+			name:         "2 hostnames with ports",
+			hosts:        []string{"test-client-1.scylla-cluster.svc:9142", "test-client-2.scylla-cluster.svc:9142"},
+			wantProxyMap: map[string]string{"127.0.0.1": "test-client-1.scylla-cluster.svc:9142", "127.0.0.2": "test-client-2.scylla-cluster.svc:9142"},
+		},
+		{
+			name:         "IPs and hostnames mixed",
+			hosts:        []string{"test-client-1.scylla-cluster.svc:9042", "192.168.1.100:9042"},
+			wantProxyMap: map[string]string{"127.0.0.1": "test-client-1.scylla-cluster.svc:9042", "127.0.0.2": "192.168.1.100:9042"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			hostMap := createProxyHostMap(tc.hosts)
+			assert.Equal(t, tc.wantProxyMap, hostMap)
+		})
+	}
+}

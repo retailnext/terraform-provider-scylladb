@@ -72,7 +72,7 @@ func (h *HTTPProxyDialer) Dial(network, addr string) (net.Conn, error) {
 		tlsConn := tls.Client(conn, &tls.Config{ServerName: host})
 		if err := tlsConn.Handshake(); err != nil {
 			conn.Close()
-			return nil, fmt.Errorf("TLS handshake with proxy failed: %v", err)
+			return nil, fmt.Errorf("TLS handshake with proxy failed: %w", err)
 		}
 		conn = tlsConn
 	}
@@ -94,7 +94,7 @@ func (h *HTTPProxyDialer) Dial(network, addr string) (net.Conn, error) {
 
 	if err := req.Write(conn); err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("failed to send CONNECT request: %v", err)
+		return nil, fmt.Errorf("failed to send CONNECT request: %w", err)
 	}
 
 	// Read the response
@@ -102,7 +102,7 @@ func (h *HTTPProxyDialer) Dial(network, addr string) (net.Conn, error) {
 	resp, err := http.ReadResponse(bufReader, req)
 	if err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("failed to read CONNECT response: %v", err)
+		return nil, fmt.Errorf("failed to read CONNECT response: %w", err)
 	}
 	defer resp.Body.Close()
 

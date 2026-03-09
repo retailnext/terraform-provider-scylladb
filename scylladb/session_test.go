@@ -88,6 +88,85 @@ func TestSetmTLS(t *testing.T) {
 	assert.Equal(t, expectedRole, role)
 }
 
+func TestSetTLS_InvalidCA(t *testing.T) {
+	cluster, err := NewClusterConfig([]string{"127.0.0.1:9042"})
+	if err != nil {
+		t.Fatalf("failed to create cluster config: %s", err)
+	}
+	err = cluster.SetTLS([]byte("not-a-pem"), nil, nil, false)
+	assert.EqualError(t, err, "failed to append CA certificate")
+}
+
+func TestSetTLS_InvalidClientKeyPair(t *testing.T) {
+	cluster, err := NewClusterConfig([]string{"127.0.0.1:9042"})
+	if err != nil {
+		t.Fatalf("failed to create cluster config: %s", err)
+	}
+	err = cluster.SetTLS(caCertPEM, clientCertPEM, []byte("not-a-key"), false)
+	assert.Error(t, err)
+}
+
+func TestSetTLS_InsecureSkipVerify(t *testing.T) {
+	cluster, err := NewClusterConfig([]string{"127.0.0.1:9042"})
+	if err != nil {
+		t.Fatalf("failed to create cluster config: %s", err)
+	}
+
+	err = cluster.SetTLS(caCertPEM, nil, nil, false)
+	assert.NoError(t, err)
+	assert.True(t, cluster.Cluster.SslOpts.InsecureSkipVerify)
+
+	err = cluster.SetTLS(caCertPEM, nil, nil, true)
+	assert.NoError(t, err)
+	assert.False(t, cluster.Cluster.SslOpts.InsecureSkipVerify)
+}
+
+func TestSetTLS_NoClientCert(t *testing.T) {
+	cluster, err := NewClusterConfig([]string{"127.0.0.1:9042"})
+	if err != nil {
+		t.Fatalf("failed to create cluster config: %s", err)
+	}
+	err = cluster.SetTLS(caCertPEM, nil, nil, false)
+	assert.NoError(t, err)
+	assert.Empty(t, cluster.Cluster.SslOpts.Certificates)
+}
+
+func TestSetTLS_WithClientCert(t *testing.T) {
+	cluster, err := NewClusterConfig([]string{"127.0.0.1:9042"})
+	if err != nil {
+		t.Fatalf("failed to create cluster config: %s", err)
+	}
+	err = cluster.SetTLS(caCertPEM, clientCertPEM, clientKeyPEM, false)
+	assert.NoError(t, err)
+	assert.Len(t, cluster.Cluster.SslOpts.Certificates, 1)
+	assert.NotNil(t, cluster.Cluster.SslOpts.GetClientCertificate)
+}
+
+func TestSetTLS_PropagatesConfigToProxyHostDialer(t *testing.T) {
+	proxyHostDialer := &ProxyHostDialer{}
+	cluster, err := NewClusterConfig([]string{"127.0.0.1:9042"})
+	if err != nil {
+		t.Fatalf("failed to create cluster config: %s", err)
+	}
+	cluster.Cluster.HostDialer = proxyHostDialer
+
+	err = cluster.SetTLS(caCertPEM, clientCertPEM, clientKeyPEM, false)
+	assert.NoError(t, err)
+	assert.NotNil(t, proxyHostDialer.tlsConfig)
+	assert.Same(t, cluster.Cluster.SslOpts.Config, proxyHostDialer.tlsConfig)
+}
+
+func TestSetTLS_NoProxyDialer_DoesNotPanic(t *testing.T) {
+	cluster, err := NewClusterConfig([]string{"127.0.0.1:9042"})
+	if err != nil {
+		t.Fatalf("failed to create cluster config: %s", err)
+	}
+	// HostDialer is nil by default; SetTLS should not panic
+	assert.NotPanics(t, func() {
+		_ = cluster.SetTLS(caCertPEM, nil, nil, false)
+	})
+}
+
 func TestCreateProxyHostMap(t *testing.T) {
 	tests := []struct {
 		name         string

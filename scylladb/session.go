@@ -24,7 +24,6 @@ type Cluster struct {
 
 type ProxyHostDialer struct {
 	proxyDialer proxy.Dialer
-	proxyScheme string
 	tlsConfig   *tls.Config
 	hostMap     map[string]string // maps the dummy host to the actual host
 }
@@ -88,7 +87,6 @@ func getProxyHostDialer(hosts []string, proxyAddr string) (proxyHostDialer *Prox
 
 	return &ProxyHostDialer{
 		proxyDialer: proxyDialer,
-		proxyScheme: proxyURL.Scheme,
 		hostMap:     hostMap,
 	}, dummyHosts, nil
 }

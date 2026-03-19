@@ -7,9 +7,6 @@ project {
   copyright_holder = "RetailNext, Inc."
 
   header_ignore = [
-    # internal catalog metadata (prose)
-    "META.d/**/*.yaml",
-
     # examples used within documentation (prose)
     "examples/**",
 

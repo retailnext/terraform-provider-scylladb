@@ -83,10 +83,6 @@ For clusters that require client certificate authentication, provide both a CA c
 provider "scylladb" {
   host         = "scylladb.example.com:9142"
   ca_cert_file = "/etc/ssl/scylladb/ca.crt"
-  auth_login_userpass {
-    username = "myuser"
-    password = "mypassword"
-  }
   auth_tls {
     cert_file = "/etc/ssl/scylladb/client.crt"
     key_file  = "/etc/ssl/scylladb/client.key"

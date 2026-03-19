@@ -46,6 +46,6 @@ resource "scylladb_role" "admin" {
 ## Import
 
 ```shell
-# Role can be imported by specifying the role name.
+# Import a role resource by specifying the role name.
 terraform import scylladb_role.admin admin
 ```

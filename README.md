@@ -7,7 +7,6 @@ including roles, keyspaces, and grants. It contains the following
 - `examples/`: examples
 - `docs/`: generated documentation,
 - `scylladb/`: client for scylladb and abstracted methods to update ACL in scylladb
-- Miscellaneous meta files.
 
 ## Requirements
 

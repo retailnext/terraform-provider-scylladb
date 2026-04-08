@@ -54,8 +54,8 @@ The following environment variables are supported. They are read first; an expli
 
 Optional:
 
-- `password` (String, Sensitive) Login with password
-- `username` (String) Login with username
+- `password` (String, Sensitive) Login with password. Can also be set via the SCYLLADB_PASSWORD environment variable.
+- `username` (String) Login with username. Can also be set via the SCYLLADB_USERNAME environment variable.
 
 
 <a id="nestedblock--auth_tls"></a>

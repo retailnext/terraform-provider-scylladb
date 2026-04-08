@@ -84,11 +84,11 @@ func (p *scylladbProvider) Schema(ctx context.Context, req provider.SchemaReques
 				Description: "Login to ScyllaDB using the userpass method",
 				Attributes: map[string]schema.Attribute{
 					"username": schema.StringAttribute{
-						Description: "Login with username",
+						Description: "Login with username. Can also be set via the SCYLLADB_USERNAME environment variable.",
 						Optional:    true,
 					},
 					"password": schema.StringAttribute{
-						Description: "Login with password",
+						Description: "Login with password. Can also be set via the SCYLLADB_PASSWORD environment variable.",
 						Optional:    true,
 						Sensitive:   true,
 					},
@@ -174,6 +174,12 @@ func (p *scylladbProvider) Configure(ctx context.Context, req provider.Configure
 	// Set Username/Password authentication if configured
 	if data.AuthLoginUserPass != nil {
 		tflog.Debug(ctx, "Configuring Username/Password authentication for ScyllaDB client")
+
+		username := os.Getenv("SCYLLADB_USERNAME")
+		if !data.AuthLoginUserPass.Username.IsNull() {
+			username = data.AuthLoginUserPass.Username.ValueString()
+		}
+
 		password := os.Getenv("SCYLLADB_PASSWORD")
 		if !data.AuthLoginUserPass.Password.IsNull() {
 			password = data.AuthLoginUserPass.Password.ValueString()
@@ -189,7 +195,7 @@ func (p *scylladbProvider) Configure(ctx context.Context, req provider.Configure
 			)
 		}
 
-		client.SetUserPasswordAuth(data.AuthLoginUserPass.Username.ValueString(), password)
+		client.SetUserPasswordAuth(username, password)
 	}
 
 	// Set TLS authentication if configured

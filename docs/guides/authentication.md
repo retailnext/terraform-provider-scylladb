@@ -29,6 +29,7 @@ Sensitive values can be kept out of Terraform configuration files using environm
 | Variable | Description |
 |---|---|
 | `SCYLLADB_HOST` | Hostname or IP address of the ScyllaDB instance (overridden by `host`) |
+| `SCYLLADB_USERNAME` | Username for username/password authentication (overridden by `auth_login_userpass.username`) |
 | `SCYLLADB_PASSWORD` | Password for username/password authentication (overridden by `auth_login_userpass.password`) |
 | `SCYLLADB_CA_CERT` | PEM-encoded CA certificate (alternative to `ca_cert_file`) |
 | `SCYLLADB_CLIENT_CERT` | PEM-encoded client certificate (alternative to `auth_tls.cert_file`) |

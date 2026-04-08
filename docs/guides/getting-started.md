@@ -12,6 +12,9 @@ This guide walks through configuring the ScyllaDB provider and creating a role w
 
 - A running ScyllaDB cluster with authentication enabled
 - Terraform >= 1.4
+- The user/role you connect with must have permissions to manage roles and grants (e.g. `cassandra` superuser)
+  Note that the provider will try to perform as instructed, but if the user lacks permissions, Terraform will
+  report errors during apply.
 
 ## Configure the Provider
 

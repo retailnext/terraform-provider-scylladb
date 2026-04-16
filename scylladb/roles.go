@@ -3,9 +3,14 @@
 package scylladb
 
 import (
+	"errors"
 	"fmt"
 	"unicode"
+
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 )
+
+var ErrRoleNotFound = errors.New("role not found")
 
 type Role struct {
 	Role        string
@@ -23,6 +28,9 @@ func (c *Cluster) GetRole(roleName string) (Role, error) {
 		&role.IsSuperuser,
 		&role.MemberOf,
 	); err != nil {
+		if errors.Is(err, gocql.ErrNotFound) {
+			return Role{}, ErrRoleNotFound
+		}
 		return Role{}, err
 	}
 	return role, nil

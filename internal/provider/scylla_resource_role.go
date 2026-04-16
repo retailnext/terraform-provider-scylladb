@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -155,6 +156,10 @@ func (r *roleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 
 	curRole, err := r.client.GetRole(state.ID.ValueString())
 	if err != nil {
+		if errors.Is(err, scylladb.ErrRoleNotFound) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Unable to read the role",
 			err.Error(),

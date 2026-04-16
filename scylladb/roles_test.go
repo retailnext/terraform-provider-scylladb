@@ -25,6 +25,14 @@ func newTestCluster(t *testing.T) *Cluster {
 	return cluster
 }
 
+func TestGetRoleNotFound(t *testing.T) {
+	cluster := newTestCluster(t)
+	defer cluster.Session.Close()
+
+	_, err := cluster.GetRole("it_should_not_exist")
+	assert.ErrorIs(t, err, ErrRoleNotFound)
+}
+
 func TestGetRoleCassandra(t *testing.T) {
 	cluster := newTestCluster(t)
 	defer cluster.Session.Close()
@@ -133,5 +141,5 @@ func TestDeleteRole(t *testing.T) {
 	}
 
 	_, err = cluster.GetRole(inputRole.Role)
-	assert.EqualError(t, err, "not found")
+	assert.ErrorIs(t, err, ErrRoleNotFound)
 }

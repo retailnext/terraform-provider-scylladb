@@ -17,10 +17,30 @@ type ParsedIdentifier struct {
 	Original     string // original string as supplied by the user (e.g. "cycling" or "cycling.cyclist_name")
 }
 
-// AuthoritativeBinding represents a set of privileges granted to a set of roles.
+// AuthoritativeBinding represents a set of privileges granted to a role.
 type AuthoritativeBinding struct {
-	Privileges []string // "ALL PERMISSIONS" should not be included in AuthoritativeBinding
+	Privileges []string
 	Role       string
+}
+
+// const ValidPrivileges lists the privileges that are allowed in an authoritative binding for keyspace and table resources.
+var ValidPrivileges = []string{
+	"ALTER",
+	"AUTHORIZE",
+	"CREATE",
+	"DROP",
+	"MODIFY",
+	"SELECT",
+}
+
+// Validate returns an error if any privilege in the binding is not one of ValidPrivileges.
+func (b AuthoritativeBinding) Validate() error {
+	for _, priv := range b.Privileges {
+		if !slices.Contains(ValidPrivileges, strings.ToUpper(priv)) {
+			return fmt.Errorf("privilege %q is not allowed in an authoritative binding", priv)
+		}
+	}
+	return nil
 }
 
 // ParseIdentifier returns if the given string represents a keyspace or a table.
@@ -46,6 +66,12 @@ func ParseIdentifier(identifier string) ParsedIdentifier {
 // Privileges present in the database but absent from bindings are revoked; privileges in
 // bindings but absent from the database are granted.
 func (c *Cluster) ApplyAuthoritativeGrant(identifier ParsedIdentifier, bindings []AuthoritativeBinding) error {
+	// Validate bindings first
+	for _, b := range bindings {
+		if err := b.Validate(); err != nil {
+			return err
+		}
+	}
 
 	// Get current permissions using role_permissions table
 	currentPermsMap, err := c.GetAllRolePermissionsPerId(identifier)

@@ -157,6 +157,50 @@ func TestApplyAuthoritativeGrantCaseInsensitive(t *testing.T) {
 	}, perms)
 }
 
+func TestAuthoritativeBindingValidate(t *testing.T) {
+	tests := []struct {
+		name      string
+		binding   AuthoritativeBinding
+		wantError bool
+	}{
+		{
+			name:      "valid privileges",
+			binding:   AuthoritativeBinding{Privileges: []string{"SELECT", "MODIFY"}, Role: "role_a"},
+			wantError: false,
+		},
+		{
+			name:      "invalid privilege ALL PERMISSIONS uppercase",
+			binding:   AuthoritativeBinding{Privileges: []string{"ALL PERMISSIONS"}, Role: "role_a"},
+			wantError: true,
+		},
+		{
+			name:      "invalid privilege ALL PERMISSIONS lowercase",
+			binding:   AuthoritativeBinding{Privileges: []string{"all permissions"}, Role: "role_a"},
+			wantError: true,
+		},
+		{
+			name:      "invalid privilege mixed with valid",
+			binding:   AuthoritativeBinding{Privileges: []string{"SELECT", "ALL PERMISSIONS"}, Role: "role_a"},
+			wantError: true,
+		},
+		{
+			name:      "empty privileges",
+			binding:   AuthoritativeBinding{Privileges: []string{}, Role: "role_a"},
+			wantError: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.binding.Validate()
+			if tc.wantError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 // setupTestKSAndTable creates the cycling keyspace and cycling.cyclist_name table if they don't exist.
 func setupTestKSAndTable(t *testing.T, cluster *Cluster) {
 	t.Helper()

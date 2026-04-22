@@ -92,7 +92,6 @@ func (c *Cluster) ListGrant(grant Grant) ([]Permission, bool, error) {
 	log.Printf("Executing ReadGrant query: %s", queryStr)
 
 	iter := c.Session.Query(queryStr).Iter()
-	defer iter.Close()
 
 	var permissions []Permission
 	var p Permission
@@ -103,6 +102,9 @@ func (c *Cluster) ListGrant(grant Grant) ([]Permission, bool, error) {
 		permissions = append(permissions, p)
 	}
 
+	if err := iter.Close(); err != nil {
+		return nil, false, err
+	}
 	return permissions, found, nil
 }
 

@@ -51,7 +51,6 @@ resource "scylladb_grant" "admin_alter_cycling" {
 ### Read-Only
 
 - `id` (String) The ID of the grant.
-- `last_updated` (String) The timestamp of the last update to the grant.
 - `permissions` (List of String) The recorded permission for the grant
 
 ## Supported Values

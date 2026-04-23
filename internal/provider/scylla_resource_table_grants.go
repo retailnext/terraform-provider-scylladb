@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -36,7 +35,6 @@ type tableGrantsResource struct {
 
 type tableGrantsResourceModel struct {
 	ID          types.String `tfsdk:"id"`
-	LastUpdated types.String `tfsdk:"last_updated"`
 	Keyspace    types.String `tfsdk:"keyspace"`
 	Table       types.String `tfsdk:"table"`
 	Grants      []grantModel `tfsdk:"grant"`
@@ -54,10 +52,9 @@ func (r *tableGrantsResource) Schema(_ context.Context, _ resource.SchemaRequest
 			"id": schema.StringAttribute{
 				Description: "The table identifier as `keyspace.table`.",
 				Computed:    true,
-			},
-			"last_updated": schema.StringAttribute{
-				Description: "Timestamp of the last update.",
-				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"keyspace": schema.StringAttribute{
 				Description: "The keyspace containing the table.",
@@ -96,6 +93,7 @@ func (r *tableGrantsResource) Schema(_ context.Context, _ resource.SchemaRequest
 							Required:    true,
 							ElementType: types.StringType,
 							Validators: []validator.List{
+								listvalidator.UniqueValues(),
 								listvalidator.ValueStringsAre(
 									stringvalidator.OneOfCaseInsensitive(
 										"ALTER",
@@ -209,7 +207,6 @@ func (r *tableGrantsResource) ModifyPlan(ctx context.Context, req resource.Modif
 	// grant config is changed
 	if !grantListsEqual(plan.Grants, state.Grants) {
 		plan.Permissions = types.ListUnknown(types.StringType)
-		plan.LastUpdated = types.StringUnknown()
 		resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 		return
 	}
@@ -239,7 +236,6 @@ func (r *tableGrantsResource) ModifyPlan(ctx context.Context, req resource.Modif
 			id.Original, statePerms, dbPerms),
 	)
 	plan.Permissions = types.ListUnknown(types.StringType)
-	plan.LastUpdated = types.StringUnknown()
 	resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 }
 
@@ -298,6 +294,5 @@ func (r *tableGrantsResource) populateComputed(ctx context.Context, plan *tableG
 	}
 	plan.Permissions = permsList
 	plan.ID = types.StringValue(id.Original)
-	plan.LastUpdated = types.StringValue(time.Now().Format(time.RFC850))
 	return diags
 }

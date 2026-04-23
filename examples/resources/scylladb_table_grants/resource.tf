@@ -26,8 +26,7 @@ resource "scylladb_table_grants" "cycling_cyclist_name" {
 }
 
 provider "scylladb" {
-  host                 = "localhost:9042"
-  system_auth_keyspace = "system"
+  host = "localhost:9042"
   auth_login_userpass {
     username = "cassandra"
     password = "cassandra"

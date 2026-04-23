@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -34,7 +33,6 @@ type grantResource struct {
 
 type grantResourceModel struct {
 	ID           types.String `tfsdk:"id"`
-	LastUpdated  types.String `tfsdk:"last_updated"`
 	RoleName     types.String `tfsdk:"role_name"`
 	Privilege    types.String `tfsdk:"privilege"`
 	ResourceType types.String `tfsdk:"resource_type"`
@@ -53,10 +51,6 @@ func (g *grantResource) Schema(ctx context.Context, req resource.SchemaRequest, 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "The ID of the grant.",
-				Computed:    true,
-			},
-			"last_updated": schema.StringAttribute{
-				Description: "The timestamp of the last update to the grant.",
 				Computed:    true,
 			},
 			"role_name": schema.StringAttribute{
@@ -170,7 +164,6 @@ func (g *grantResource) Create(ctx context.Context, req resource.CreateRequest, 
 	plan.Permissions = permissionsList
 
 	plan.ID = types.StringValue(fmt.Sprintf("%s|%s|%s|%s|%s", grant.RoleName, grant.Privilege, grant.ResourceType, grant.Keyspace, grant.Identifier))
-	plan.LastUpdated = types.StringValue(time.Now().Format(time.RFC850))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -243,7 +236,6 @@ func (g *grantResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	plan.Permissions = permissionsList
 	// Populate Compuated attribute values
 	plan.ID = types.StringValue(fmt.Sprintf("%s|%s|%s|%s|%s", toGrant.RoleName, toGrant.Privilege, toGrant.ResourceType, toGrant.Keyspace, toGrant.Identifier))
-	plan.LastUpdated = types.StringValue(time.Now().Format(time.RFC850))
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {

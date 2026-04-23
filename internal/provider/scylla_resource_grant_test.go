@@ -46,15 +46,13 @@ resource "scylladb_grant" "admin_alter_keyspace" {
 					resource.TestCheckNoResourceAttr("scylladb_grant.admin_alter_keyspace", "identifier"),
 					// Verify dynamic values have any value set in the state.
 					resource.TestCheckResourceAttrSet("scylladb_grant.admin_alter_keyspace", "id"),
-					resource.TestCheckResourceAttrSet("scylladb_grant.admin_alter_keyspace", "last_updated"),
 				),
 			},
 			// ImportState testing
 			{
-				ResourceName:            "scylladb_grant.admin_alter_keyspace",
-				ImportState:             true,
-				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"last_updated"},
+				ResourceName:      "scylladb_grant.admin_alter_keyspace",
+				ImportState:       true,
+				ImportStateVerify: true,
 			},
 			// Update and Read testing
 			{

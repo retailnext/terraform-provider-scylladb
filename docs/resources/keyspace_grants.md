@@ -45,8 +45,7 @@ resource "scylladb_keyspace_grants" "cycling" {
 }
 
 provider "scylladb" {
-  host                 = "localhost:9042"
-  system_auth_keyspace = "system"
+  host = "localhost:9042"
   auth_login_userpass {
     username = "cassandra"
     password = "cassandra"
@@ -68,7 +67,6 @@ provider "scylladb" {
 ### Read-Only
 
 - `id` (String) The keyspace name.
-- `last_updated` (String) Timestamp of the last update.
 - `permissions` (List of String) Effective grants currently applied as `keyspace:role:PRIVILEGE` strings. Used for drift detection.
 
 <a id="nestedblock--grant"></a>

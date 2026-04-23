@@ -47,7 +47,7 @@ The following environment variables are supported. They are read first; an expli
 - `ca_cert_file` (String) Path to the CA certificate file for TLS connections.
 - `host` (String) Hostname or IP address of the ScyllaDB instance with a port if necessary. e.g. localhost:9042
 - `skip_host_verification` (Boolean) Skip TLS host verification. Default is `false`.
-- `system_auth_keyspace` (String) The keyspace where ScyllaDB stores authentication and authorization information. Default is `system_auth`.
+- `system_auth_keyspace` (String) The keyspace where ScyllaDB stores authentication and authorization information. Default is `system`.
 
 <a id="nestedblock--auth_login_userpass"></a>
 ### Nested Schema for `auth_login_userpass`

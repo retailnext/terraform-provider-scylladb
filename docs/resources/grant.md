@@ -14,6 +14,9 @@ Grant resources are idempotent: applying the same grant multiple times does not 
 If a grant is modified outside of Terraform, the resource is automatically marked for replacement
 on the next plan.
 
+Please note that this resource should not be used with `scylladb_keyspace_grants` or `scylladb_table_grants`
+since it may update grants on the same keyspaces/tables and it will cause conflicts.
+
 ## Example Usage
 
 ```terraform
@@ -48,7 +51,6 @@ resource "scylladb_grant" "admin_alter_cycling" {
 ### Read-Only
 
 - `id` (String) The ID of the grant.
-- `last_updated` (String) The timestamp of the last update to the grant.
 - `permissions` (List of String) The recorded permission for the grant
 
 ## Supported Values

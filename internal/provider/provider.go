@@ -67,7 +67,7 @@ func (p *scylladbProvider) Schema(ctx context.Context, req provider.SchemaReques
 				Optional:            true,
 			},
 			"system_auth_keyspace": schema.StringAttribute{
-				MarkdownDescription: "The keyspace where ScyllaDB stores authentication and authorization information. Default is `system_auth`.",
+				MarkdownDescription: "The keyspace where ScyllaDB stores authentication and authorization information. Default is `system`.",
 				Optional:            true,
 			},
 			"ca_cert_file": schema.StringAttribute{
@@ -168,7 +168,7 @@ func (p *scylladbProvider) Configure(ctx context.Context, req provider.Configure
 	if !data.SystemAuthKeyspace.IsNull() {
 		client.SetSystemAuthKeyspace(data.SystemAuthKeyspace.ValueString())
 	} else {
-		client.SetSystemAuthKeyspace("system_auth")
+		client.SetSystemAuthKeyspace("system")
 	}
 
 	// Set Username/Password authentication if configured
@@ -293,7 +293,7 @@ func (p *scylladbProvider) Configure(ctx context.Context, req provider.Configure
 		return
 	}
 
-	// Make the HashiCups client available during DataSource and Resource
+	// Make the scylladb client available during DataSource and Resource
 	// type Configure methods.
 	resp.DataSourceData = client
 	resp.ResourceData = client
@@ -305,6 +305,8 @@ func (p *scylladbProvider) Resources(ctx context.Context) []func() resource.Reso
 	return []func() resource.Resource{
 		NewRoleResource,
 		NewGrantResource,
+		NewKeyspaceGrantsResource,
+		NewTableGrantsResource,
 	}
 }
 

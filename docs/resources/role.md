@@ -40,7 +40,6 @@ resource "scylladb_role" "admin" {
 ### Read-Only
 
 - `id` (String) The name of the role to look up.
-- `last_updated` (String) The time of the last time the resource was updated
 - `member_of` (List of String) a list of members of the role
 
 ## Import

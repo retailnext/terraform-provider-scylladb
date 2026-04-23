@@ -16,7 +16,6 @@ const (
 	providerConfigFmt = `
 provider "scylladb" {
   host = "%s"
-  system_auth_keyspace = "system"
   auth_login_userpass {
     username = "cassandra"
     password = "cassandra"
@@ -70,7 +69,6 @@ func TestAccProviderConfigmTLS(t *testing.T) {
 	providermTLSConfigFmt := `
 provider "scylladb" {
   host = "%s"
-  system_auth_keyspace = "system"
   skip_host_verification = true
 }
 data "scylladb_role" "cassandra" {

@@ -6,11 +6,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -34,7 +34,6 @@ type roleResource struct {
 // roleResourceModel maps the resource source schema data.
 type roleResourceModel struct {
 	ID          types.String `tfsdk:"id"`
-	LastUpdated types.String `tfsdk:"last_updated"`
 	Role        types.String `tfsdk:"role"`
 	CanLogin    types.Bool   `tfsdk:"can_login"`
 	IsSuperuser types.Bool   `tfsdk:"is_superuser"`
@@ -59,21 +58,21 @@ func (r *roleResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 					stringplanmodifier.UseStateForUnknown(), // the attribute is not configurable and should not show updates from the existing state
 				},
 			},
-			"last_updated": schema.StringAttribute{
-				Computed:    true,
-				Description: "The time of the last time the resource was updated",
-			},
 			"role": schema.StringAttribute{
 				Description: "The name of the role",
 				Required:    true,
 			},
 			"can_login": schema.BoolAttribute{
 				Description: "whether a user can login as a role",
+				Computed:    true,
 				Optional:    true,
+				Default:     booldefault.StaticBool(false),
 			},
 			"is_superuser": schema.BoolAttribute{
 				Description: "whether the role is a superuser",
+				Computed:    true,
 				Optional:    true,
+				Default:     booldefault.StaticBool(false),
 			},
 			"member_of": schema.ListAttribute{
 				Computed:    true,
@@ -128,7 +127,6 @@ func (r *roleResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	// Populate computed attribute values
 	plan.ID = types.StringValue(role.Role)
-	plan.LastUpdated = types.StringValue(time.Now().Format(time.RFC850))
 	memberOf, diags := types.ListValueFrom(ctx, types.StringType, []string{})
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -179,7 +177,6 @@ func (r *roleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		Role:        types.StringValue(curRole.Role),
 		CanLogin:    types.BoolValue(curRole.CanLogin),
 		IsSuperuser: types.BoolValue(curRole.IsSuperuser),
-		LastUpdated: types.StringValue(time.Now().Format(time.RFC850)),
 		MemberOf:    memberOf,
 	}
 
@@ -222,7 +219,6 @@ func (r *roleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 
 	// Populate computed attribute values
 	plan.ID = types.StringValue(role.Role)
-	plan.LastUpdated = types.StringValue(time.Now().Format(time.RFC850))
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)

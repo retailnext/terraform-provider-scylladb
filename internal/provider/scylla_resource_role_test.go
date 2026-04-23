@@ -98,15 +98,13 @@ resource "scylladb_role" "admin" {
 					resource.TestCheckResourceAttr("scylladb_role.admin", "is_superuser", "false"),
 					// Verify dynamic values have any value set in the state.
 					resource.TestCheckResourceAttrSet("scylladb_role.admin", "id"),
-					resource.TestCheckResourceAttrSet("scylladb_role.admin", "last_updated"),
 				),
 			},
 			// ImportState testing
 			{
-				ResourceName:            "scylladb_role.admin",
-				ImportState:             true,
-				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"last_updated"},
+				ResourceName:      "scylladb_role.admin",
+				ImportState:       true,
+				ImportStateVerify: true,
 			},
 			// Update and Read testing
 			{

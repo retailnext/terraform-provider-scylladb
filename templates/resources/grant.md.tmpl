@@ -14,6 +14,9 @@ Grant resources are idempotent: applying the same grant multiple times does not 
 If a grant is modified outside of Terraform, the resource is automatically marked for replacement
 on the next plan.
 
+Please note that this resource should not be used with `scylladb_keyspace_grants` or `scylladb_table_grants`
+since it may update grants on the same keyspaces/tables and it will cause conflicts.
+
 ## Example Usage
 
 {{ tffile "examples/resources/scylladb_grant/resource.tf" }}

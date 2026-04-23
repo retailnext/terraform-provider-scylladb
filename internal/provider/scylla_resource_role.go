@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -69,11 +70,15 @@ func (r *roleResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 			},
 			"can_login": schema.BoolAttribute{
 				Description: "whether a user can login as a role",
+				Computed:    true,
 				Optional:    true,
+				Default:     booldefault.StaticBool(false),
 			},
 			"is_superuser": schema.BoolAttribute{
 				Description: "whether the role is a superuser",
+				Computed:    true,
 				Optional:    true,
+				Default:     booldefault.StaticBool(false),
 			},
 			"member_of": schema.ListAttribute{
 				Computed:    true,
@@ -179,7 +184,7 @@ func (r *roleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		Role:        types.StringValue(curRole.Role),
 		CanLogin:    types.BoolValue(curRole.CanLogin),
 		IsSuperuser: types.BoolValue(curRole.IsSuperuser),
-		LastUpdated: types.StringValue(time.Now().Format(time.RFC850)),
+		LastUpdated: state.LastUpdated,
 		MemberOf:    memberOf,
 	}
 

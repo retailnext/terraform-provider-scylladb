@@ -293,7 +293,7 @@ func (p *scylladbProvider) Configure(ctx context.Context, req provider.Configure
 		return
 	}
 
-	// Make the HashiCups client available during DataSource and Resource
+	// Make the scylladb client available during DataSource and Resource
 	// type Configure methods.
 	resp.DataSourceData = client
 	resp.ResourceData = client
@@ -305,6 +305,8 @@ func (p *scylladbProvider) Resources(ctx context.Context) []func() resource.Reso
 	return []func() resource.Resource{
 		NewRoleResource,
 		NewGrantResource,
+		NewKeyspaceGrantsResource,
+		NewTableGrantsResource,
 	}
 }
 

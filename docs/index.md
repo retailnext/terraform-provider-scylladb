@@ -33,7 +33,7 @@ The following environment variables are supported. They are read first; an expli
 |---|---|---|
 | `SCYLLADB_HOST` | `host` | Hostname or IP address of the ScyllaDB instance |
 | `SCYLLADB_PASSWORD` | `auth_login_userpass.password` | Password for username/password authentication |
-| `SCYLLADB_CA_CERT` | — | PEM-encoded CA certificate (alternative to `ca_cert_file`) |
+| `SCYLLADB_CA_CERT` | `ca_cert` | PEM-encoded CA certificate |
 | `SCYLLADB_CLIENT_CERT` | — | PEM-encoded client certificate (alternative to `auth_tls.cert_file`) |
 | `SCYLLADB_CLIENT_KEY` | — | PEM-encoded client private key (alternative to `auth_tls.key_file`) |
 
@@ -44,7 +44,8 @@ The following environment variables are supported. They are read first; an expli
 
 - `auth_login_userpass` (Block, Optional) Login to ScyllaDB using the userpass method (see [below for nested schema](#nestedblock--auth_login_userpass))
 - `auth_tls` (Block, Optional) Login to ScyllaDB using TLS (see [below for nested schema](#nestedblock--auth_tls))
-- `ca_cert_file` (String) Path to the CA certificate file for TLS connections.
+- `ca_cert` (String) PEM-encoded CA certificate content for TLS connections. Mutually exclusive with `ca_cert_file`. Can also be set via the `SCYLLADB_CA_CERT` environment variable.
+- `ca_cert_file` (String) Path to the CA certificate file for TLS connections. Mutually exclusive with `ca_cert`.
 - `host` (String) Hostname or IP address of the ScyllaDB instance with a port if necessary. e.g. localhost:9042
 - `skip_host_verification` (Boolean) Skip TLS host verification. Default is `false`.
 - `system_auth_keyspace` (String) The keyspace where ScyllaDB stores authentication and authorization information. Default is `system`.

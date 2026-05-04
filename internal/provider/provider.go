@@ -38,6 +38,7 @@ type scylladbProviderModel struct {
 	Host                 types.String            `tfsdk:"host"`
 	SystemAuthKeyspace   types.String            `tfsdk:"system_auth_keyspace"`
 	SkipHostVerification types.Bool              `tfsdk:"skip_host_verification"`
+	CAcert               types.String            `tfsdk:"ca_cert"`
 	CAcertFile           types.String            `tfsdk:"ca_cert_file"`
 	AuthLoginUserPass    *authLoginUserPassModel `tfsdk:"auth_login_userpass"`
 	AuthTLS              *authTLSModel           `tfsdk:"auth_tls"`
@@ -70,8 +71,12 @@ func (p *scylladbProvider) Schema(ctx context.Context, req provider.SchemaReques
 				MarkdownDescription: "The keyspace where ScyllaDB stores authentication and authorization information. Default is `system`.",
 				Optional:            true,
 			},
+			"ca_cert": schema.StringAttribute{
+				MarkdownDescription: "PEM-encoded CA certificate content for TLS connections. Mutually exclusive with `ca_cert_file`. Can also be set via the `SCYLLADB_CA_CERT` environment variable.",
+				Optional:            true,
+			},
 			"ca_cert_file": schema.StringAttribute{
-				MarkdownDescription: "Path to the CA certificate file for TLS connections.",
+				MarkdownDescription: "Path to the CA certificate file for TLS connections. Mutually exclusive with `ca_cert`.",
 				Optional:            true,
 			},
 			"skip_host_verification": schema.BoolAttribute{
@@ -212,20 +217,32 @@ func (p *scylladbProvider) Configure(ctx context.Context, req provider.Configure
 		"client_key_len":  len(os.Getenv("SCYLLADB_CLIENT_KEY")),
 	})
 
-	// Read the CA cert file if provided
-	if !data.CAcertFile.IsNull() {
-		if !data.CAcertFile.IsNull() {
-			caCertFile := data.CAcertFile.ValueString()
-			caCert, err = os.ReadFile(caCertFile)
-			if err != nil {
-				resp.Diagnostics.AddAttributeError(
-					path.Root("ca_cert_file"),
-					"Unable to Read CA Certificate File",
-					"An unexpected error was encountered trying to read the CA certificate file. "+
-						"Please verify the file path is correct and try again.\n\n"+
-						err.Error(),
-				)
-			}
+	// Read the CA cert — mutually exclusive: ca_cert (inline) vs ca_cert_file
+	if !data.CAcert.IsNull() && !data.CAcertFile.IsNull() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("ca_cert"),
+			"Conflicting CA Certificate Configuration",
+			"Only one of `ca_cert` or `ca_cert_file` may be set, not both.",
+		)
+		resp.Diagnostics.AddAttributeError(
+			path.Root("ca_cert_file"),
+			"Conflicting CA Certificate Configuration",
+			"Only one of `ca_cert` or `ca_cert_file` may be set, not both.",
+		)
+		return // fail fast if both are set, as this is a configuration error that must be resolved by the user and there is no value in proceeding with further configuration attempts
+	} else if !data.CAcert.IsNull() {
+		caCert = []byte(data.CAcert.ValueString())
+	} else if !data.CAcertFile.IsNull() {
+		caCertFile := data.CAcertFile.ValueString()
+		caCert, err = os.ReadFile(caCertFile)
+		if err != nil {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("ca_cert_file"),
+				"Unable to Read CA Certificate File",
+				"An unexpected error was encountered trying to read the CA certificate file. "+
+					"Please verify the file path is correct and try again.\n\n"+
+					err.Error(),
+			)
 		}
 	}
 

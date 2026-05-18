@@ -3,7 +3,7 @@
 services:
   scylla:
     container_name: scylla-node
-    image: scylladb/scylla:2026.1.2
+    image: scylladb/scylla:2026.1.3
     command: --developer-mode 1 --smp 1 --overprovisioned 1 --authenticator PasswordAuthenticator --authorizer CassandraAuthorizer
     ports:
       - "9042:9042"
@@ -16,7 +16,7 @@ services:
       retries: 10
 
   init-db:
-    image: scylladb/scylla:2026.1.2
+    image: scylladb/scylla:2026.1.3
     container_name: scylla-init
     volumes:
       - ./init.cql:/init.cql

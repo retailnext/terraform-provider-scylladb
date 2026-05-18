@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -23,6 +23,7 @@ import (
 
 var _ resource.Resource = &tableGrantsResource{}
 var _ resource.ResourceWithConfigure = &tableGrantsResource{}
+var _ resource.ResourceWithImportState = &tableGrantsResource{}
 var _ resource.ResourceWithModifyPlan = &tableGrantsResource{}
 
 func NewTableGrantsResource() resource.Resource {
@@ -80,7 +81,7 @@ func (r *tableGrantsResource) Schema(_ context.Context, _ resource.SchemaRequest
 			},
 		},
 		Blocks: map[string]schema.Block{
-			"grant": schema.ListNestedBlock{
+			"grant": schema.SetNestedBlock{
 				Description: "Privileges to grant to a role on the table.",
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
@@ -88,13 +89,12 @@ func (r *tableGrantsResource) Schema(_ context.Context, _ resource.SchemaRequest
 							Description: "Role to receive the privileges.",
 							Required:    true,
 						},
-						"privileges": schema.ListAttribute{
+						"privileges": schema.SetAttribute{
 							Description: "Privileges to grant (e.g. ALTER, SELECT, MODIFY).",
 							Required:    true,
 							ElementType: types.StringType,
-							Validators: []validator.List{
-								listvalidator.UniqueValues(),
-								listvalidator.ValueStringsAre(
+							Validators: []validator.Set{
+								setvalidator.ValueStringsAre(
 									stringvalidator.OneOfCaseInsensitive(
 										"ALTER",
 										"AUTHORIZE",
@@ -107,8 +107,8 @@ func (r *tableGrantsResource) Schema(_ context.Context, _ resource.SchemaRequest
 						},
 					},
 				},
-				Validators: []validator.List{
-					listvalidator.SizeAtLeast(1),
+				Validators: []validator.Set{
+					setvalidator.SizeAtLeast(1),
 				},
 			},
 		},
@@ -179,8 +179,44 @@ func (r *tableGrantsResource) Delete(ctx context.Context, req resource.DeleteReq
 	}
 }
 
-func (r *tableGrantsResource) ImportState(_ context.Context, _ resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resp.Diagnostics.AddError("Not supported", "Import is not supported for tableGrantsResource")
+func (r *tableGrantsResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := scylladb.ParseIdentifier(req.ID)
+	if id.ResourceType != "TABLE" {
+		resp.Diagnostics.AddError("Invalid Import ID", fmt.Sprintf("Expected a table identifier in the format 'keyspace.table', got %q", req.ID))
+		return
+	}
+	permissionMap, err := r.client.GetAllRolePermissionsPerId(id)
+	if err != nil {
+		resp.Diagnostics.AddError("Error Importing Table Grants", err.Error())
+		return
+	}
+	if len(permissionMap) == 0 {
+		resp.Diagnostics.AddError("No Grants Found to Import", fmt.Sprintf("No grants were found on %q. Only identifiers with existing grants can be imported.", id.Original))
+		return
+	}
+	var grants []grantModel
+	for role, privs := range permissionMap {
+		privSet, diags := types.SetValueFrom(ctx, types.StringType, privs)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		grants = append(grants, grantModel{
+			Role:       types.StringValue(role),
+			Privileges: privSet,
+		})
+	}
+	state := tableGrantsResourceModel{
+		ID:       types.StringValue(id.Original),
+		Keyspace: types.StringValue(id.Keyspace),
+		Table:    types.StringValue(id.Table),
+		Grants:   grants,
+	}
+	resp.Diagnostics.Append(r.populateComputed(ctx, &state, id)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 // ModifyPlan detects cases requiring an Update:
@@ -205,7 +241,7 @@ func (r *tableGrantsResource) ModifyPlan(ctx context.Context, req resource.Modif
 	}
 
 	// grant config is changed
-	if !grantListsEqual(plan.Grants, state.Grants) {
+	if !grantSetsEqual(plan.Grants, state.Grants) {
 		plan.Permissions = types.ListUnknown(types.StringType)
 		resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 		return

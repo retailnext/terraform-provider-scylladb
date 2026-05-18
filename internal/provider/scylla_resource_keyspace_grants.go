@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -23,6 +23,7 @@ import (
 
 var _ resource.Resource = &keyspaceGrantsResource{}
 var _ resource.ResourceWithConfigure = &keyspaceGrantsResource{}
+var _ resource.ResourceWithImportState = &keyspaceGrantsResource{}
 var _ resource.ResourceWithModifyPlan = &keyspaceGrantsResource{}
 
 func NewKeyspaceGrantsResource() resource.Resource {
@@ -43,7 +44,7 @@ type keyspaceGrantsResourceModel struct {
 // grantModel is shared by keyspaceGrantsResource and tableGrantsResource.
 type grantModel struct {
 	Role       types.String `tfsdk:"role"`
-	Privileges types.List   `tfsdk:"privileges"`
+	Privileges types.Set    `tfsdk:"privileges"`
 }
 
 func (r *keyspaceGrantsResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -78,7 +79,7 @@ func (r *keyspaceGrantsResource) Schema(_ context.Context, _ resource.SchemaRequ
 			},
 		},
 		Blocks: map[string]schema.Block{
-			"grant": schema.ListNestedBlock{
+			"grant": schema.SetNestedBlock{
 				Description: "Privileges to grant to a role on the keyspace.",
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
@@ -86,13 +87,12 @@ func (r *keyspaceGrantsResource) Schema(_ context.Context, _ resource.SchemaRequ
 							Description: "Role to receive the privileges.",
 							Required:    true,
 						},
-						"privileges": schema.ListAttribute{
+						"privileges": schema.SetAttribute{
 							Description: "Privileges to grant (e.g. ALTER, SELECT, MODIFY).",
 							Required:    true,
 							ElementType: types.StringType,
-							Validators: []validator.List{
-								listvalidator.UniqueValues(),
-								listvalidator.ValueStringsAre(
+							Validators: []validator.Set{
+								setvalidator.ValueStringsAre(
 									stringvalidator.OneOfCaseInsensitive(
 										"ALTER",
 										"AUTHORIZE",
@@ -106,8 +106,8 @@ func (r *keyspaceGrantsResource) Schema(_ context.Context, _ resource.SchemaRequ
 						},
 					},
 				},
-				Validators: []validator.List{
-					listvalidator.SizeAtLeast(1),
+				Validators: []validator.Set{
+					setvalidator.SizeAtLeast(1),
 				},
 			},
 		},
@@ -180,8 +180,46 @@ func (r *keyspaceGrantsResource) Delete(ctx context.Context, req resource.Delete
 	}
 }
 
-func (r *keyspaceGrantsResource) ImportState(_ context.Context, _ resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resp.Diagnostics.AddError("Not supported", "Import is not supported for keyspaceGrantsResource")
+func (r *keyspaceGrantsResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := scylladb.ParseIdentifier(req.ID)
+	if id.ResourceType != "KEYSPACE" {
+		resp.Diagnostics.AddError("Invalid Import ID", fmt.Sprintf("Expected a keyspace identifier, got %q", req.ID))
+		return
+	}
+	permissionMap, err := r.client.GetAllRolePermissionsPerId(id)
+	if err != nil {
+		resp.Diagnostics.AddError("Error Importing Keyspace Grants", err.Error())
+		return
+	}
+	if len(permissionMap) == 0 {
+		resp.Diagnostics.AddError("No Grants found to Import",
+			fmt.Sprintf("No grants were found for keyspace %q. Only identifiers with existing grants can be imported.", id.Original))
+		return
+	}
+
+	var grants []grantModel
+	for role, privs := range permissionMap {
+		privSet, diags := types.SetValueFrom(ctx, types.StringType, privs)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		grants = append(grants, grantModel{
+			Role:       types.StringValue(role),
+			Privileges: privSet,
+		})
+	}
+
+	state := keyspaceGrantsResourceModel{
+		ID:       types.StringValue(id.Original),
+		Keyspace: types.StringValue(id.Keyspace),
+		Grants:   grants,
+	}
+	resp.Diagnostics.Append(r.populateComputed(ctx, &state, id)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 // ModifyPlan detects cases requiring an Update:
@@ -206,7 +244,7 @@ func (r *keyspaceGrantsResource) ModifyPlan(ctx context.Context, req resource.Mo
 	}
 
 	// grant config is changed
-	if !grantListsEqual(plan.Grants, state.Grants) {
+	if !grantSetsEqual(plan.Grants, state.Grants) {
 		plan.Permissions = types.ListUnknown(types.StringType)
 		resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 		return
@@ -240,13 +278,18 @@ func (r *keyspaceGrantsResource) ModifyPlan(ctx context.Context, req resource.Mo
 	resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 }
 
-// grantListsEqual returns true if two grant lists have identical roles and privileges in the same order.
-func grantListsEqual(a, b []grantModel) bool {
+// grantSetsEqual returns true if two grant sets contain identical role/privilege pairs regardless of order.
+func grantSetsEqual(a, b []grantModel) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	for i := range a {
-		if !a[i].Role.Equal(b[i].Role) || !a[i].Privileges.Equal(b[i].Privileges) {
+	byRole := make(map[string]grantModel, len(b))
+	for _, g := range b {
+		byRole[g.Role.ValueString()] = g
+	}
+	for _, ag := range a {
+		bg, ok := byRole[ag.Role.ValueString()]
+		if !ok || !ag.Privileges.Equal(bg.Privileges) {
 			return false
 		}
 	}

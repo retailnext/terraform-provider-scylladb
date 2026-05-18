@@ -62,7 +62,7 @@ provider "scylladb" {
 
 ### Optional
 
-- `grant` (Block List) Privileges to grant to a role on the keyspace. (see [below for nested schema](#nestedblock--grant))
+- `grant` (Block Set) Privileges to grant to a role on the keyspace. (see [below for nested schema](#nestedblock--grant))
 
 ### Read-Only
 
@@ -74,7 +74,7 @@ provider "scylladb" {
 
 Required:
 
-- `privileges` (List of String) Privileges to grant (e.g. ALTER, SELECT, MODIFY).
+- `privileges` (Set of String) Privileges to grant (e.g. ALTER, SELECT, MODIFY).
 - `role` (String) Role to receive the privileges.
 
 ## Supported Values
@@ -91,5 +91,7 @@ Required:
 | `SELECT` | Allows reading data with `SELECT` |
 
 ## Import
-Import is not supported for scylladb_keyspace_grants since the database will get reconciled based on the given
-configuration whether the grants exist or not.
+```shell
+# Import a keyspace grants resource by specifying the keyspace name.
+terraform import scylladb_keyspace_grants.example keyspace_name
+```

@@ -75,6 +75,116 @@ resource "scylladb_table_grants" "cyclist_name" {
 	})
 }
 
+func TestAccTableGrantsResourceImport(t *testing.T) {
+	devClusterHost := testutil.NewTestContainer(t)
+	providerConfig := fmt.Sprintf(providerConfigFmt, devClusterHost)
+	setupTestKeyspaceAndTable(t, []string{devClusterHost})
+
+	config := providerConfig + `
+resource "scylladb_role" "admin" {
+  role      = "admin"
+  can_login = false
+}
+resource "scylladb_table_grants" "cyclist_name" {
+  keyspace = "cycling"
+  table    = "cyclist_name"
+  grant {
+    role       = scylladb_role.admin.role
+    privileges = ["SELECT"]
+  }
+}
+`
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "id", "cycling.cyclist_name"),
+					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "keyspace", "cycling"),
+					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "table", "cyclist_name"),
+					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "grant.#", "1"),
+					resource.TestCheckResourceAttrSet("scylladb_table_grants.cyclist_name", "permissions.#"),
+				),
+			},
+			// Import — single role/privilege so ImportStateVerify can do an exact state comparison
+			{
+				ResourceName:      "scylladb_table_grants.cyclist_name",
+				ImportState:       true,
+				ImportStateId:     "cycling.cyclist_name",
+				ImportStateVerify: true,
+			},
+			// Applying the same config after import produces no changes
+			{
+				Config: config,
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction("scylladb_table_grants.cyclist_name", plancheck.ResourceActionNoop),
+					},
+				},
+			},
+		},
+	})
+}
+
+func TestAccTableGrantsResourceImportMultiRole(t *testing.T) {
+	devClusterHost := testutil.NewTestContainer(t)
+	providerConfig := fmt.Sprintf(providerConfigFmt, devClusterHost)
+	setupTestKeyspaceAndTable(t, []string{devClusterHost})
+
+	config := providerConfig + `
+resource "scylladb_role" "admin" {
+  role      = "admin"
+  can_login = false
+}
+resource "scylladb_role" "readonly" {
+  role      = "readonly"
+  can_login = false
+}
+resource "scylladb_table_grants" "cyclist_name" {
+  keyspace = "cycling"
+  table    = "cyclist_name"
+  grant {
+    role       = scylladb_role.admin.role
+    privileges = ["ALTER", "SELECT"]
+  }
+  grant {
+    role       = scylladb_role.readonly.role
+    privileges = ["SELECT"]
+  }
+}
+`
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "grant.#", "2"),
+					resource.TestCheckResourceAttrSet("scylladb_table_grants.cyclist_name", "permissions.#"),
+				),
+			},
+			// Import — set-based grants match by value so ImportStateVerify works regardless of map iteration order
+			{
+				ResourceName:      "scylladb_table_grants.cyclist_name",
+				ImportState:       true,
+				ImportStateId:     "cycling.cyclist_name",
+				ImportStateVerify: true,
+			},
+			// Apply original config after import; verify final state
+			{
+				Config: config,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "grant.#", "2"),
+					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "permissions.#", "3"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccTableGrantsResourceDriftDetection(t *testing.T) {
 	devClusterHost := testutil.NewTestContainer(t)
 	providerConfig := fmt.Sprintf(providerConfigFmt, devClusterHost)

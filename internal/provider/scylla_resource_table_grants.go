@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -81,7 +82,7 @@ func (r *tableGrantsResource) Schema(_ context.Context, _ resource.SchemaRequest
 			},
 		},
 		Blocks: map[string]schema.Block{
-			"grant": schema.SetNestedBlock{
+			"grant": schema.ListNestedBlock{
 				Description: "Privileges to grant to a role on the table.",
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
@@ -107,8 +108,9 @@ func (r *tableGrantsResource) Schema(_ context.Context, _ resource.SchemaRequest
 						},
 					},
 				},
-				Validators: []validator.Set{
-					setvalidator.SizeAtLeast(1),
+				Validators: []validator.List{
+					listvalidator.SizeAtLeast(1),
+					uniqueGrantRolesValidator{},
 				},
 			},
 		},
@@ -206,6 +208,7 @@ func (r *tableGrantsResource) ImportState(ctx context.Context, req resource.Impo
 			Privileges: privSet,
 		})
 	}
+	sortGrants(grants)
 	state := tableGrantsResourceModel{
 		ID:       types.StringValue(id.Original),
 		Keyspace: types.StringValue(id.Keyspace),
@@ -241,11 +244,15 @@ func (r *tableGrantsResource) ModifyPlan(ctx context.Context, req resource.Modif
 	}
 
 	// grant config is changed
-	if !grantSetsEqual(plan.Grants, state.Grants) {
+	if !grantsEqual(plan.Grants, state.Grants) {
 		plan.Permissions = types.ListUnknown(types.StringType)
 		resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 		return
 	}
+
+	// Grants are semantically unchanged; mirror state grant order so Terraform
+	// does not show positional diffs when the config order differs from state.
+	plan.Grants = state.Grants
 
 	// external drift
 	id := scylladb.ParseIdentifier(state.Keyspace.ValueString() + "." + state.Table.ValueString())
@@ -263,6 +270,7 @@ func (r *tableGrantsResource) ModifyPlan(ctx context.Context, req resource.Modif
 
 	tflog.Debug(ctx, "table grants permissions check", map[string]any{"db": dbPerms, "state": statePerms})
 	if slices.Compare(dbPerms, statePerms) == 0 {
+		resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 		return
 	}
 
@@ -286,6 +294,8 @@ func (r *tableGrantsResource) applyPlanData(ctx context.Context, plan *tableGran
 		diags.AddError("Error Applying Table Grants", err.Error())
 		return
 	}
+
+	sortGrants(plan.Grants)
 
 	// populate computed attributes
 	diags.Append(r.populateComputed(ctx, plan, id)...)

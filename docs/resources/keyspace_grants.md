@@ -62,7 +62,7 @@ provider "scylladb" {
 
 ### Optional
 
-- `grant` (Block Set) Privileges to grant to a role on the keyspace. (see [below for nested schema](#nestedblock--grant))
+- `grant` (Block List) Privileges to grant to a role on the keyspace. (see [below for nested schema](#nestedblock--grant))
 
 ### Read-Only
 

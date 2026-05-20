@@ -109,6 +109,7 @@ func (r *tableGrantsResource) Schema(_ context.Context, _ resource.SchemaRequest
 				},
 				Validators: []validator.Set{
 					setvalidator.SizeAtLeast(1),
+					uniqueGrantRolesValidator{},
 				},
 			},
 		},

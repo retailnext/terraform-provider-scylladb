@@ -4,6 +4,7 @@ package provider
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -180,6 +181,35 @@ resource "scylladb_table_grants" "cyclist_name" {
 					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "grant.#", "2"),
 					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "permissions.#", "3"),
 				),
+			},
+		},
+	})
+}
+
+func TestAccTableGrantsResourceDuplicateRole(t *testing.T) {
+	devClusterHost := testutil.NewTestContainer(t)
+	providerConfig := fmt.Sprintf(providerConfigFmt, devClusterHost)
+	setupTestKeyspaceAndTable(t, []string{devClusterHost})
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig + `
+resource "scylladb_table_grants" "cyclist_name" {
+  keyspace = "cycling"
+  table    = "cyclist_name"
+  grant {
+    role       = "admin"
+    privileges = ["SELECT"]
+  }
+  grant {
+    role       = "admin"
+    privileges = ["ALTER"]
+  }
+}
+`,
+				ExpectError: regexp.MustCompile(`Duplicate Grant Role`),
 			},
 		},
 	})

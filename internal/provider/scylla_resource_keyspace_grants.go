@@ -108,6 +108,7 @@ func (r *keyspaceGrantsResource) Schema(_ context.Context, _ resource.SchemaRequ
 				},
 				Validators: []validator.Set{
 					setvalidator.SizeAtLeast(1),
+					uniqueGrantRolesValidator{},
 				},
 			},
 		},

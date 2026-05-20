@@ -165,14 +165,14 @@ resource "scylladb_keyspace_grants" "cycling" {
 					resource.TestCheckResourceAttrSet("scylladb_keyspace_grants.cycling", "permissions.#"),
 				),
 			},
-			// Import — grants are sorted by role in ImportState so list order matches config order
+			// Import — set-based grants match by value so ImportStateVerify works regardless of map iteration order
 			{
 				ResourceName:      "scylladb_keyspace_grants.cycling",
 				ImportState:       true,
 				ImportStateId:     "cycling",
 				ImportStateVerify: true,
 			},
-			// Apply original config after import; verify final state
+			// Apply original config to reconcile any grant-order differences; verify final state
 			{
 				Config: config,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -183,7 +183,6 @@ resource "scylladb_keyspace_grants" "cycling" {
 		},
 	})
 }
-
 func TestAccKeyspaceGrantsResourceDuplicateRole(t *testing.T) {
 	devClusterHost := testutil.NewTestContainer(t)
 	providerConfig := fmt.Sprintf(providerConfigFmt, devClusterHost)

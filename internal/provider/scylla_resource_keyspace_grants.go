@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -80,7 +79,7 @@ func (r *keyspaceGrantsResource) Schema(_ context.Context, _ resource.SchemaRequ
 			},
 		},
 		Blocks: map[string]schema.Block{
-			"grant": schema.ListNestedBlock{
+			"grant": schema.SetNestedBlock{
 				Description: "Privileges to grant to a role on the keyspace.",
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
@@ -107,8 +106,8 @@ func (r *keyspaceGrantsResource) Schema(_ context.Context, _ resource.SchemaRequ
 						},
 					},
 				},
-				Validators: []validator.List{
-					listvalidator.SizeAtLeast(1),
+				Validators: []validator.Set{
+					setvalidator.SizeAtLeast(1),
 					uniqueGrantRolesValidator{},
 				},
 			},
@@ -211,7 +210,6 @@ func (r *keyspaceGrantsResource) ImportState(ctx context.Context, req resource.I
 			Privileges: privSet,
 		})
 	}
-	sortGrants(grants)
 
 	state := keyspaceGrantsResourceModel{
 		ID:       types.StringValue(id.Original),
@@ -247,15 +245,11 @@ func (r *keyspaceGrantsResource) ModifyPlan(ctx context.Context, req resource.Mo
 	}
 
 	// grant config is changed
-	if !grantsEqual(plan.Grants, state.Grants) {
+	if !grantSetsEqual(plan.Grants, state.Grants) {
 		plan.Permissions = types.ListUnknown(types.StringType)
 		resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 		return
 	}
-
-	// Grants are semantically unchanged; mirror state grant order so Terraform
-	// does not show positional diffs when the config order differs from state.
-	plan.Grants = state.Grants
 
 	// external drift
 	id := scylladb.ParseIdentifier(state.Keyspace.ValueString())
@@ -273,7 +267,6 @@ func (r *keyspaceGrantsResource) ModifyPlan(ctx context.Context, req resource.Mo
 
 	tflog.Debug(ctx, "keyspace grants permissions check", map[string]any{"db": dbPerms, "state": statePerms})
 	if slices.Compare(dbPerms, statePerms) == 0 {
-		resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 		return
 	}
 
@@ -286,55 +279,8 @@ func (r *keyspaceGrantsResource) ModifyPlan(ctx context.Context, req resource.Mo
 	resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 }
 
-// uniqueGrantRolesValidator rejects a grant set that contains duplicate role values.
-type uniqueGrantRolesValidator struct{}
-
-func (uniqueGrantRolesValidator) Description(_ context.Context) string {
-	return "Grant roles must be unique across all grant blocks."
-}
-
-func (uniqueGrantRolesValidator) MarkdownDescription(_ context.Context) string {
-	return "Grant roles must be unique across all grant blocks."
-}
-
-func (v uniqueGrantRolesValidator) ValidateList(ctx context.Context, req validator.ListRequest, resp *validator.ListResponse) {
-	if req.ConfigValue.IsUnknown() || req.ConfigValue.IsNull() {
-		return
-	}
-	var grants []grantModel
-	resp.Diagnostics.Append(req.ConfigValue.ElementsAs(ctx, &grants, true)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	seen := make(map[string]bool, len(grants))
-	for _, g := range grants {
-		if g.Role.IsUnknown() || g.Role.IsNull() {
-			continue
-		}
-		role := g.Role.ValueString()
-		if seen[role] {
-			resp.Diagnostics.AddAttributeError(req.Path, "Duplicate Grant Role",
-				fmt.Sprintf("Role %q appears in more than one grant block.", role))
-			return
-		}
-		seen[role] = true
-	}
-}
-
-func sortGrants(grants []grantModel) {
-	slices.SortFunc(grants, func(a, b grantModel) int {
-		if a.Role.ValueString() < b.Role.ValueString() {
-			return -1
-		}
-		if a.Role.ValueString() > b.Role.ValueString() {
-			return 1
-		}
-		return 0
-	})
-}
-
-// grantsEqual returns true if two grant slices contain identical role/privilege pairs regardless of order.
-func grantsEqual(a, b []grantModel) bool {
+// grantSetsEqual returns true if two grant sets contain identical role/privilege pairs regardless of order.
+func grantSetsEqual(a, b []grantModel) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -362,8 +308,6 @@ func (r *keyspaceGrantsResource) applyPlanData(ctx context.Context, plan *keyspa
 		diags.AddError("Error Applying Keyspace Grants", err.Error())
 		return
 	}
-
-	sortGrants(plan.Grants)
 
 	// populate computed attributes
 	diags.Append(r.populateComputed(ctx, plan, id)...)

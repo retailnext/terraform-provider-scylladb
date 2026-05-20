@@ -167,7 +167,7 @@ resource "scylladb_table_grants" "cyclist_name" {
 					resource.TestCheckResourceAttrSet("scylladb_table_grants.cyclist_name", "permissions.#"),
 				),
 			},
-			// Import — grants are sorted by role in ImportState so list order matches config order
+			// Import — set-based grants match by value so ImportStateVerify works regardless of map iteration order
 			{
 				ResourceName:      "scylladb_table_grants.cyclist_name",
 				ImportState:       true,

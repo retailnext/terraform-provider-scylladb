@@ -5,26 +5,22 @@ package provider
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/retailnext/terraform-provider-scylladb/scylladb"
 )
 
 var _ resource.Resource = &keyspaceGrantsResource{}
 var _ resource.ResourceWithConfigure = &keyspaceGrantsResource{}
 var _ resource.ResourceWithImportState = &keyspaceGrantsResource{}
-var _ resource.ResourceWithModifyPlan = &keyspaceGrantsResource{}
 
 func NewKeyspaceGrantsResource() resource.Resource {
 	return &keyspaceGrantsResource{}
@@ -35,16 +31,9 @@ type keyspaceGrantsResource struct {
 }
 
 type keyspaceGrantsResourceModel struct {
-	ID          types.String `tfsdk:"id"`
-	Keyspace    types.String `tfsdk:"keyspace"`
-	Grants      []grantModel `tfsdk:"grant"`
-	Permissions types.List   `tfsdk:"permissions"`
-}
-
-// grantModel is shared by keyspaceGrantsResource and tableGrantsResource.
-type grantModel struct {
-	Role       types.String `tfsdk:"role"`
-	Privileges types.Set    `tfsdk:"privileges"`
+	ID       types.String `tfsdk:"id"`
+	Keyspace types.String `tfsdk:"keyspace"`
+	Grants   Grants       `tfsdk:"grant"`
 }
 
 func (r *keyspaceGrantsResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -67,14 +56,6 @@ func (r *keyspaceGrantsResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Required:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
-				},
-			},
-			"permissions": schema.ListAttribute{
-				Description: "Effective grants currently applied as `keyspace:role:PRIVILEGE` strings. Used for drift detection.",
-				Computed:    true,
-				ElementType: types.StringType,
-				PlanModifiers: []planmodifier.List{
-					listplanmodifier.UseStateForUnknown(),
 				},
 			},
 		},
@@ -146,9 +127,26 @@ func (r *keyspaceGrantsResource) Create(ctx context.Context, req resource.Create
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *keyspaceGrantsResource) Read(_ context.Context, _ resource.ReadRequest, _ *resource.ReadResponse) {
-	// Refreshing the state based on the current state of db should not occur. Any change in the db warrants
-	// a update. Refer to ModifyPlan for reading and resolving the diff.
+func (r *keyspaceGrantsResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var state keyspaceGrantsResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	id := scylladb.ParseIdentifier(state.Keyspace.ValueString())
+	roleBindings, err := r.client.GetAllRoleBindingsPerId(id)
+	if err != nil {
+		resp.Diagnostics.AddError("Error Reading Keyspace Grants", err.Error())
+		return
+	}
+	grants, diags := GetGrantsFromRoleBindings(ctx, roleBindings)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	state.Grants = grants
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 func (r *keyspaceGrantsResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -198,7 +196,7 @@ func (r *keyspaceGrantsResource) ImportState(ctx context.Context, req resource.I
 		return
 	}
 
-	var grants []grantModel
+	var grants Grants
 	for role, privs := range permissionMap {
 		privSet, diags := types.SetValueFrom(ctx, types.StringType, privs)
 		resp.Diagnostics.Append(diags...)
@@ -216,85 +214,8 @@ func (r *keyspaceGrantsResource) ImportState(ctx context.Context, req resource.I
 		Keyspace: types.StringValue(id.Keyspace),
 		Grants:   grants,
 	}
-	resp.Diagnostics.Append(r.populateComputed(ctx, &state, id)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
-}
-
-// ModifyPlan detects cases requiring an Update:
-// - The grant config is changed.
-// - Permissions drifted in the DB.
-func (r *keyspaceGrantsResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	// Skip if resource is being created or destroyed
-	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
-		return
-	}
-
-	var state keyspaceGrantsResourceModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	var plan keyspaceGrantsResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	// grant config is changed
-	if !grantSetsEqual(plan.Grants, state.Grants) {
-		plan.Permissions = types.ListUnknown(types.StringType)
-		resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
-		return
-	}
-
-	// external drift
-	id := scylladb.ParseIdentifier(state.Keyspace.ValueString())
-	dbPerms, err := r.client.GetEffectivePermissions(id)
-	if err != nil {
-		resp.Diagnostics.AddError("Error Reading Effective Permissions", err.Error())
-		return
-	}
-
-	var statePerms []string
-	resp.Diagnostics.Append(state.Permissions.ElementsAs(ctx, &statePerms, false)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	tflog.Debug(ctx, "keyspace grants permissions check", map[string]any{"db": dbPerms, "state": statePerms})
-	if slices.Compare(dbPerms, statePerms) == 0 {
-		return
-	}
-
-	resp.Diagnostics.AddWarning(
-		"Keyspace grants are changed unexpectedly",
-		fmt.Sprintf("Permissions on %q were modified externally and will be reconciled on next apply.\nExpected: %v\nActual:   %v",
-			id.Original, statePerms, dbPerms),
-	)
-	plan.Permissions = types.ListUnknown(types.StringType)
-	resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
-}
-
-// grantSetsEqual returns true if two grant sets contain identical role/privilege pairs regardless of order.
-func grantSetsEqual(a, b []grantModel) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	byRole := make(map[string]grantModel, len(b))
-	for _, g := range b {
-		byRole[g.Role.ValueString()] = g
-	}
-	for _, ag := range a {
-		bg, ok := byRole[ag.Role.ValueString()]
-		if !ok || !ag.Privileges.Equal(bg.Privileges) {
-			return false
-		}
-	}
-	return true
 }
 
 func (r *keyspaceGrantsResource) applyPlanData(ctx context.Context, plan *keyspaceGrantsResourceModel) (diags diag.Diagnostics) {
@@ -309,8 +230,7 @@ func (r *keyspaceGrantsResource) applyPlanData(ctx context.Context, plan *keyspa
 		return
 	}
 
-	// populate computed attributes
-	diags.Append(r.populateComputed(ctx, plan, id)...)
+	plan.ID = types.StringValue(id.Original)
 	return
 }
 
@@ -334,23 +254,4 @@ func (r *keyspaceGrantsResource) extractPlanData(ctx context.Context, plan keysp
 		})
 	}
 	return
-}
-
-func (r *keyspaceGrantsResource) populateComputed(ctx context.Context, plan *keyspaceGrantsResourceModel, id scylladb.ParsedIdentifier) diag.Diagnostics {
-	var diags diag.Diagnostics
-
-	perms, err := r.client.GetEffectivePermissions(id)
-	if err != nil {
-		diags.AddError("Error Reading Effective Permissions", err.Error())
-		return diags
-	}
-
-	permsList, d := types.ListValueFrom(ctx, types.StringType, perms)
-	diags.Append(d...)
-	if diags.HasError() {
-		return diags
-	}
-	plan.Permissions = permsList
-	plan.ID = types.StringValue(id.Original)
-	return diags
 }

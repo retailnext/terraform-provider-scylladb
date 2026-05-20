@@ -67,7 +67,6 @@ provider "scylladb" {
 ### Read-Only
 
 - `id` (String) The keyspace name.
-- `permissions` (List of String) Effective grants currently applied as `keyspace:role:PRIVILEGE` strings. Used for drift detection.
 
 <a id="nestedblock--grant"></a>
 ### Nested Schema for `grant`

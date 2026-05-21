@@ -208,3 +208,25 @@ func (c *Cluster) GetAllRolePermissionsPerId(id ParsedIdentifier) (permissionMap
 	}
 	return permissionMap, nil
 }
+
+func (c *Cluster) GetAllRoleBindingsPerId(id ParsedIdentifier) (bindings []AuthoritativeBinding, err error) {
+	permissionMap, err := c.GetAllRolePermissionsPerId(id)
+	if err != nil {
+		return nil, err
+	}
+	sortedRoles := make([]string, 0, len(permissionMap))
+	for role := range permissionMap {
+		sortedRoles = append(sortedRoles, role)
+	}
+	slices.Sort(sortedRoles)
+
+	bindings = make([]AuthoritativeBinding, 0, len(permissionMap))
+	for _, role := range sortedRoles {
+		perms := permissionMap[role]
+		bindings = append(bindings, AuthoritativeBinding{
+			Role:       role,
+			Privileges: perms,
+		})
+	}
+	return bindings, nil
+}

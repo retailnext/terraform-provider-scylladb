@@ -9,6 +9,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/retailnext/terraform-provider-scylladb/internal/testutil"
 	"github.com/retailnext/terraform-provider-scylladb/scylladb"
 )
@@ -53,7 +54,6 @@ resource "scylladb_table_grants" "cyclist_name" {
 					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "table", "cyclist_name"),
 					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "id", "cycling.cyclist_name"),
 					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "grant.#", "2"),
-					resource.TestCheckResourceAttrSet("scylladb_table_grants.cyclist_name", "permissions.#"),
 				),
 			},
 			// Update — narrow grants; excess is revoked
@@ -106,7 +106,6 @@ resource "scylladb_table_grants" "cyclist_name" {
 					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "keyspace", "cycling"),
 					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "table", "cyclist_name"),
 					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "grant.#", "1"),
-					resource.TestCheckResourceAttrSet("scylladb_table_grants.cyclist_name", "permissions.#"),
 				),
 			},
 			// Import — single role/privilege so ImportStateVerify can do an exact state comparison
@@ -164,7 +163,6 @@ resource "scylladb_table_grants" "cyclist_name" {
 				Config: config,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "grant.#", "2"),
-					resource.TestCheckResourceAttrSet("scylladb_table_grants.cyclist_name", "permissions.#"),
 				),
 			},
 			// Import — set-based grants match by value so ImportStateVerify works regardless of map iteration order
@@ -179,7 +177,6 @@ resource "scylladb_table_grants" "cyclist_name" {
 				Config: config,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "grant.#", "2"),
-					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "permissions.#", "3"),
 				),
 			},
 		},
@@ -267,7 +264,26 @@ resource "scylladb_table_grants" "cyclist_name" {
 					},
 				},
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "permissions.#", "1"),
+					resource.TestCheckResourceAttr("scylladb_table_grants.cyclist_name", "grant.#", "1"),
+					func(_ *terraform.State) error {
+						cluster, err := getTestScyllaClient([]string{devClusterHost})
+						if err != nil {
+							return fmt.Errorf("failed to create cluster client: %w", err)
+						}
+						defer cluster.Session.Close()
+						perms, err := cluster.GetAllRolePermissionsPerId(scylladb.ParseIdentifier("cycling.cyclist_name"))
+						if err != nil {
+							return fmt.Errorf("failed to get permissions: %w", err)
+						}
+						grants := perms["admin"]
+						if len(grants) != 1 {
+							return fmt.Errorf("expected 1 grant for admin on cycling.cyclist_name, got %d: %v", len(grants), grants)
+						}
+						if grants[0] != "SELECT" {
+							return fmt.Errorf("expected SELECT grant for admin on cycling.cyclist_name, got %q", grants[0])
+						}
+						return nil
+					},
 				),
 			},
 		},

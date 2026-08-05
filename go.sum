@@ -12,6 +12,8 @@ github.com/agext/levenshtein v1.2.3 h1:YB2fHEn0UJagG8T1rrWknE3ZQzWM06O8AMAatNn7l
 github.com/agext/levenshtein v1.2.3/go.mod h1:JEDfjyjHDjOF/1e4FlBE/PkbqA9OfWu2ki2W0IB5558=
 github.com/apache/cassandra-gocql-driver/v2 v2.1.1 h1:DjmtmSRoUuIFswczA8LPBppRb8T9vxqNP5Txc/lQxhE=
 github.com/apache/cassandra-gocql-driver/v2 v2.1.1/go.mod h1:QH/asJjB3mHvY6Dot6ZKMMpTcOrWJ8i9GhsvG1g0PK4=
+github.com/apache/cassandra-gocql-driver/v2 v2.1.2 h1:lu/p0Db2av18enHJvWJQoChLssI0P+AR06STq4VdvCc=
+github.com/apache/cassandra-gocql-driver/v2 v2.1.2/go.mod h1:QH/asJjB3mHvY6Dot6ZKMMpTcOrWJ8i9GhsvG1g0PK4=
 github.com/apparentlymart/go-textseg/v12 v12.0.0/go.mod h1:S/4uRK2UtaQttw1GenVJEynmyUenKwP++x/+DdGV/Ec=
 github.com/apparentlymart/go-textseg/v15 v15.0.0 h1:uYvfpb3DyLSCGWnctWKGj857c6ew1u1fNQOlOtuGxQY=
 github.com/apparentlymart/go-textseg/v15 v15.0.0/go.mod h1:K8XmNZdhEBkdlyDdvbmmsvpAG721bKi0joRfFdHIWJ4=

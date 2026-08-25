@@ -79,6 +79,46 @@ func TestGrantMethods(t *testing.T) {
 	}
 }
 
+func TestDeleteGrantAlreadyGone(t *testing.T) {
+	cluster := newTestCluster(t)
+	defer cluster.Session.Close()
+
+	err := cluster.DeleteGrant(Grant{
+		RoleName:     "it_should_not_exist",
+		Privilege:    "SELECT",
+		ResourceType: "KEYSPACE",
+		Keyspace:     "it_should_not_exist_either",
+	})
+	assert.NoError(t, err)
+}
+
+func TestDeleteGrantTwice(t *testing.T) {
+	cluster := newTestClusterWithTableAndRole(t)
+	defer cluster.Session.Close()
+
+	grant := Grant{
+		RoleName:     "testRole",
+		Privilege:    "SELECT",
+		ResourceType: "TABLE",
+		Keyspace:     "cycling",
+		Identifier:   "cyclist_name",
+	}
+	err := cluster.CreateGrant(grant)
+	if err != nil {
+		t.Fatalf("failed to create grant: %s", err)
+	}
+
+	err = cluster.DeleteGrant(grant)
+	if err != nil {
+		t.Fatalf("failed to delete grant: %s", err)
+	}
+
+	// The role and keyspace/table still exist, but the grant itself is already
+	// gone. Deleting it again should still be a no-op, not an error.
+	err = cluster.DeleteGrant(grant)
+	assert.NoError(t, err)
+}
+
 func TestGrantPermissions(t *testing.T) {
 	cluster := newTestClusterWithTableAndRole(t)
 	defer cluster.Session.Close()

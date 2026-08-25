@@ -143,3 +143,11 @@ func TestDeleteRole(t *testing.T) {
 	_, err = cluster.GetRole(inputRole.Role)
 	assert.ErrorIs(t, err, ErrRoleNotFound)
 }
+
+func TestDeleteRoleAlreadyGone(t *testing.T) {
+	cluster := newTestCluster(t)
+	defer cluster.Session.Close()
+
+	err := cluster.DeleteRole(Role{Role: "it_should_not_exist"})
+	assert.NoError(t, err)
+}

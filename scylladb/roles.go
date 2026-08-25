@@ -49,8 +49,9 @@ func (c *Cluster) UpdateRole(role Role) error {
 	return c.Session.Query(query).Exec()
 }
 
+// DeleteRole drops a role idempotently.
 func (c *Cluster) DeleteRole(role Role) error {
-	query := fmt.Sprintf(`DROP ROLE '%s'`, role.Role)
+	query := fmt.Sprintf(`DROP ROLE IF EXISTS '%s'`, role.Role)
 	return c.Session.Query(query).Exec()
 }
 

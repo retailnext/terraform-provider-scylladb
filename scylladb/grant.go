@@ -53,6 +53,7 @@ func (c *Cluster) CreateGrant(grant Grant) error {
 	return c.Session.Query(queryStr).Exec()
 }
 
+// DeleteGrant revokes a grant idempotently.
 func (c *Cluster) DeleteGrant(grant Grant) error {
 	var queryBuffer bytes.Buffer
 	err := templateDelete.Execute(&queryBuffer, grant)
@@ -62,7 +63,25 @@ func (c *Cluster) DeleteGrant(grant Grant) error {
 	queryStr := queryBuffer.String()
 	log.Printf("Executing DeleteGrant query: %s", queryStr)
 
-	return c.Session.Query(queryStr).Exec()
+	err = c.Session.Query(queryStr).Exec()
+	// CQL has no "REVOKE ... IF EXISTS", so revoking a grant with the role, keyspace,
+	// or table was already removed out-of-band (e.g. drift, or a stale/replayed apply)
+	// would fail with an "... doesn't exist" error even though the grant is effectively gone.
+	// Therefore it is treated as a successful no-op.
+	if isAlreadyGoneError(err) {
+		return nil
+	}
+	return err
+}
+
+// isAlreadyGoneError reports whether err is a CQL error caused
+// by the grant's role, keyspace, or table no longer existing.
+func isAlreadyGoneError(err error) bool {
+	var reqErr gocql.RequestError
+	if !errors.As(err, &reqErr) {
+		return false
+	}
+	return reqErr.Code() == gocql.ErrCodeInvalid && strings.Contains(reqErr.Message(), "doesn't exist")
 }
 
 func (c *Cluster) GetGrantPermissions(grant Grant) (permissions []string, err error) {

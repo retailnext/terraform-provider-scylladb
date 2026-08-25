@@ -61,4 +61,20 @@ release:
   # If you want to manually examine the release before its live, uncomment this line:
   # draft: true
 changelog:
-  disable: true
+  sort: asc
+  use: git
+  abbrev: 8
+  filters:
+    # Merge commits just say "Merge pull request #N from ..." and add no
+    # information beyond the commit(s) they merged, which are listed separately.
+    exclude:
+      - '^Merge pull request'
+      - '^Merge branch'
+  groups:
+    # dependabot commits start with "Bump ...", renovate commits start with
+    # "Update ..." - group them together so they don't drown out real changes.
+    - title: 'Dependency updates'
+      regexp: '(?i)^(bump|update)\s'
+      order: 100
+    - title: 'Other changes'
+      order: 999

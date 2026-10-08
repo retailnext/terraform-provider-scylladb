@@ -4,7 +4,19 @@ services:
   scylla:
     container_name: scylla-node
     image: scylladb/scylla:2026.2.5
-    command: --developer-mode 1 --smp 1 --overprovisioned 1 --authenticator PasswordAuthenticator --authorizer CassandraAuthorizer
+    # Recent ScyllaDB releases no longer create a default cassandra/cassandra
+    # superuser, so bootstrap it explicitly. The hash is the SHA-512 crypt of
+    # "cassandra" (openssl passwd -6 -salt saltsalt cassandra). The image
+    # entrypoint writes these arguments into a shell file that is sourced, so
+    # each "$" is escaped as "\$" for that shell and as "$$" for compose.
+    command:
+      - --developer-mode=1
+      - --smp=1
+      - --overprovisioned=1
+      - --authenticator=PasswordAuthenticator
+      - --authorizer=CassandraAuthorizer
+      - --auth-superuser-name=cassandra
+      - --auth-superuser-salted-password=\$$6\$$saltsalt\$$myJS0jsoKWaVlpZg5SG3YjpOqPXca2bK8lcyAZFTHCJzeo1os2uRmZ.gz8P1gX2ZLpjlmh2GRpT/7icWWqQt8/
     ports:
       - "9042:9042"
     networks:

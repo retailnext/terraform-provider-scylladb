@@ -90,3 +90,44 @@ The following is a general guidance on how to use the local provider you are dev
     ```
 
     If you are using `tofu`, use `$HOME/.tofurc` instead of `$HOME/.terraformrc` in the example.
+
+### Running a local ScyllaDB with Docker Compose
+
+`docker_compose/` starts a single-node ScyllaDB with password authentication, then runs
+`init.cql` from a separate `scylla-init` container to create a sample keyspace and table.
+
+```shell
+cd docker_compose
+docker compose up -d
+docker exec -it scylla-node cqlsh -u cassandra -p cassandra
+```
+
+The compose file works around two behaviors of recent ScyllaDB images (for example `2026.2.5`):
+
+- **No default `cassandra` superuser.** Without one, every login fails with
+  `Bad credentials ... Username and/or password are incorrect`. `compose.yaml` creates the superuser
+  explicitly with `--auth-superuser-name` and `--auth-superuser-salted-password`. The salted password is a
+  SHA-512 crypt hash, generated with:
+
+  ```shell
+  openssl passwd -6 -salt saltsalt cassandra
+  ```
+
+  Each `$` in the hash must be written as `\$$`. `$$` escapes compose interpolation, and `\` stops the
+  shell from expanding it: the image entrypoint writes the arguments into a shell file that is sourced
+  (`/etc/scylla.d/docker.conf`), so an unescaped `$6`, `$saltsalt`, and so on expand to empty strings and
+  the stored hash is truncated. `command` must use the YAML list form; the string form is split by compose
+  like a shell command, which removes the backslashes.
+
+  These options only take effect when the auth tables have no superuser yet, i.e. on first start. After
+  changing them, recreate the data with `docker compose down -v`.
+
+- **Tablets are enabled by default**, and tablets don't support `SimpleStrategy`
+  (`SimpleStrategy doesn't support tablet replication`). Create keyspaces with `NetworkTopologyStrategy`.
+
+To inspect the node when no login works, use the maintenance socket inside the container. It bypasses
+authentication:
+
+```shell
+docker exec scylla-node cqlsh /var/lib/scylla/cql.m -e "SELECT role, is_superuser, salted_hash FROM system.roles"
+```

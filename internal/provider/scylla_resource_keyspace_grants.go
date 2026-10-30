@@ -33,7 +33,7 @@ type keyspaceGrantsResource struct {
 type keyspaceGrantsResourceModel struct {
 	ID       types.String `tfsdk:"id"`
 	Keyspace types.String `tfsdk:"keyspace"`
-	Grants   Grants       `tfsdk:"grant"`
+	Grants   types.Set    `tfsdk:"grant"`
 }
 
 func (r *keyspaceGrantsResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -185,28 +185,21 @@ func (r *keyspaceGrantsResource) ImportState(ctx context.Context, req resource.I
 		resp.Diagnostics.AddError("Invalid Import ID", fmt.Sprintf("Expected a keyspace identifier, got %q", req.ID))
 		return
 	}
-	permissionMap, err := r.client.GetAllRolePermissionsPerId(id)
+	roleBindings, err := r.client.GetAllRoleBindingsPerId(id)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Importing Keyspace Grants", err.Error())
 		return
 	}
-	if len(permissionMap) == 0 {
+	if len(roleBindings) == 0 {
 		resp.Diagnostics.AddError("No Grants found to Import",
 			fmt.Sprintf("No grants were found for keyspace %q. Only identifiers with existing grants can be imported.", id.Original))
 		return
 	}
 
-	var grants Grants
-	for role, privs := range permissionMap {
-		privSet, diags := types.SetValueFrom(ctx, types.StringType, privs)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		grants = append(grants, grantModel{
-			Role:       types.StringValue(role),
-			Privileges: privSet,
-		})
+	grants, diags := GetGrantsFromRoleBindings(ctx, roleBindings)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	state := keyspaceGrantsResourceModel{
@@ -241,17 +234,6 @@ func (r *keyspaceGrantsResource) extractPlanData(ctx context.Context, plan keysp
 ) {
 	id = scylladb.ParseIdentifier(plan.Keyspace.ValueString())
 
-	bindings = make([]scylladb.AuthoritativeBinding, 0, len(plan.Grants))
-	for _, g := range plan.Grants {
-		var privs []string
-		diags.Append(g.Privileges.ElementsAs(ctx, &privs, false)...)
-		if diags.HasError() {
-			return
-		}
-		bindings = append(bindings, scylladb.AuthoritativeBinding{
-			Privileges: privs,
-			Role:       g.Role.ValueString(),
-		})
-	}
+	bindings, diags = bindingsFromGrants(ctx, plan.Grants)
 	return
 }
